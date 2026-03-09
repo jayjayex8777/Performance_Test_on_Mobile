@@ -1070,14 +1070,12 @@ class MainActivity : AppCompatActivity() {
         }
         val csvFiles = allCsvFiles.take(allCsvFiles.size / 4)
 
-        val snnT3 = listOf("snn_smallest_T3.ptl","snn_small_T3.ptl","snn_medium_T3.ptl","snn_large_T3.ptl","snn_largest_T3.ptl")
-        val steT3 = listOf("student_kd_smallest_T3.ptl","student_kd_small_T3.ptl","student_kd_medium_T3.ptl","student_kd_large_T3.ptl","student_kd_largest_T3.ptl")
-        val cnnModels = listOf("cnn_smallest_sensor.ptl","cnn_small_sensor.ptl","cnn_medium_sensor.ptl","cnn_large_sensor.ptl","cnn_largest_sensor.ptl")
         val qcnnModels = listOf("qcnn_smallest_sensor.ptl","qcnn_small_sensor.ptl","qcnn_medium_sensor.ptl","qcnn_large_sensor.ptl","qcnn_largest_sensor.ptl")
+        val qsparseT3fr05 = listOf("qsparse_smallest_T3_fr05.ptl","qsparse_small_T3_fr05.ptl","qsparse_medium_T3_fr05.ptl","qsparse_large_T3_fr05.ptl","qsparse_largest_T3_fr05.ptl")
 
         val allModels = listOf(
-            "SNN_T3" to snnT3, "STE_T3" to steT3,
-            "CNN" to cnnModels, "QCNN" to qcnnModels,
+            "QCNN" to qcnnModels,
+            "QSPARSE_T3_FR05" to qsparseT3fr05,
         )
         val ampFactors = listOf(1, 2, 4, 8, 16)
 
