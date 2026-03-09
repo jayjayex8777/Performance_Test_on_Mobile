@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">infer</string>
+    <string name="latency_title">모델 지연시간 측정</string>
+    <string name="start_measure">Measure Start</string>
+    <string name="start_accuracy">Accuracy 스타트</string>
+    <string name="start_sparsity">Sparsity 스타트</string>
+    <string name="waiting_status">대기 중</string>
+    <string name="start_rebuttal_measure">Rebuttal Measure</string>
+    <string name="start_rebuttal_accuracy">Rebuttal Accuracy</string>
+</resources>
