@@ -425,61 +425,95 @@ class MainActivity : AppCompatActivity() {
             return InferenceResult("infer_data 폴더에 CSV가 없습니다.", false)
         }
 
-        val modelPath = assetFilePath("student_kd_sensor_obj3.ptl")
-        val module = try {
-            LiteModuleLoader.load(modelPath)
-        } catch (t: Throwable) {
-            return InferenceResult("모델 로드 실패: ${t.localizedMessage}", false)
-        }
-
         val classNames = arrayOf("swipe_up", "swipe_down", "flick_up", "flick_down")
-        val totalPerClass = IntArray(classNames.size)
-        val correctPerClass = IntArray(classNames.size)
-        var total = 0
-        var correct = 0
+
+        val qcnnModelsAcc = listOf(
+            "qcnn_smallest_sensor.ptl",
+            "qcnn_small_sensor.ptl",
+            "qcnn_medium_sensor.ptl",
+            "qcnn_large_sensor.ptl",
+            "qcnn_largest_sensor.ptl",
+        )
+        val qsparseModelsAcc = listOf(
+            "qsparse_smallest_T3_fr05.ptl",
+            "qsparse_small_T3_fr05.ptl",
+            "qsparse_medium_T3_fr05.ptl",
+            "qsparse_large_T3_fr05.ptl",
+            "qsparse_largest_T3_fr05.ptl",
+        )
+
+        val allAccModels = listOf(
+            "QCNN" to (qcnnModelsAcc to timeSteps),
+            "QSPARSE_T3_FR05" to (qsparseModelsAcc to 3),
+        )
+
         val builder = StringBuilder()
-        builder.append("모델: student_kd_sensor_obj3.ptl\n")
+        builder.append("=== QCNN vs QSparse 정확도 비교 ===\n")
+        builder.append("CSV 파일 수: ${csvFiles.size}\n\n")
 
         try {
-            for (csv in csvFiles) {
-                val label = inferLabel(csv) ?: continue
-                val tensor = loadCsvAsTensor("infer_data/$csv")
-                val output = module.forward(IValue.from(tensor)).toTensor()
-                val scores = output.dataAsFloatArray
-                var maxIdx = 0
-                var maxVal = scores[0]
-                for (i in 1 until scores.size) {
-                    if (scores[i] > maxVal) {
-                        maxVal = scores[i]
-                        maxIdx = i
+            for ((groupName, modelInfo) in allAccModels) {
+                val (modelFiles, tValue) = modelInfo
+                builder.append("── $groupName (T=$tValue) ──\n")
+
+                for (modelFile in modelFiles) {
+                    val modelPath = assetFilePath(modelFile)
+                    val module = try {
+                        LiteModuleLoader.load(modelPath)
+                    } catch (t: Throwable) {
+                        builder.append("  $modelFile: 로드 실패 (${t.localizedMessage})\n")
+                        continue
                     }
+
+                    val totalPerClass = IntArray(classNames.size)
+                    val correctPerClass = IntArray(classNames.size)
+                    var total = 0
+                    var correct = 0
+
+                    for (csv in csvFiles) {
+                        val label = inferLabel(csv) ?: continue
+                        val tensor = loadCsvAsTensor("infer_data/$csv", tValue)
+                        val output = module.forward(IValue.from(tensor)).toTensor()
+                        val scores = output.dataAsFloatArray
+                        var maxIdx = 0
+                        var maxVal = scores[0]
+                        for (i in 1 until scores.size) {
+                            if (scores[i] > maxVal) {
+                                maxVal = scores[i]
+                                maxIdx = i
+                            }
+                        }
+                        total += 1
+                        totalPerClass[label] += 1
+                        if (maxIdx == label) {
+                            correct += 1
+                            correctPerClass[label] += 1
+                        }
+                    }
+
+                    if (total > 0) {
+                        val acc = correct.toDouble() / total.toDouble() * 100.0
+                        builder.append("  $modelFile: ${formatValue(acc)} %  ($correct/$total)\n")
+                        for (i in classNames.indices) {
+                            val tot = totalPerClass[i]
+                            val cor = correctPerClass[i]
+                            if (tot == 0) continue
+                            val accCls = cor.toDouble() / tot.toDouble() * 100.0
+                            builder.append("    ${classNames[i]}: $cor/$tot (${formatValue(accCls)} %)\n")
+                        }
+                    } else {
+                        builder.append("  $modelFile: 유효 샘플 없음\n")
+                    }
+
+                    module.destroy()
+                    System.gc()
                 }
-                total += 1
-                totalPerClass[label] += 1
-                if (maxIdx == label) {
-                    correct += 1
-                    correctPerClass[label] += 1
-                }
+                builder.append("\n")
             }
         } catch (t: Throwable) {
             return InferenceResult("추론 중 오류: ${t.localizedMessage}", false)
         }
 
-        if (total == 0) {
-            return InferenceResult("유효한 CSV가 없습니다.", false)
-        }
-        val acc = correct.toDouble() / total.toDouble()
-        builder.append("총 샘플: $total\n")
-        builder.append("정답 개수: $correct\n")
-        builder.append("Accuracy: ${formatValue(acc * 100)} %\n")
-        builder.append("동작별:\n")
-        for (i in classNames.indices) {
-            val tot = totalPerClass[i]
-            val cor = correctPerClass[i]
-            if (tot == 0) continue
-            val accCls = cor.toDouble() / tot.toDouble() * 100.0
-            builder.append("- ${classNames[i]}: $cor / $tot (${formatValue(accCls)} %)\n")
-        }
         return InferenceResult(builder.toString(), true)
     }
 
