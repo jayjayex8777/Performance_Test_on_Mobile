@@ -37,28 +37,43 @@ class MainActivity : AppCompatActivity() {
     private val random = Random(System.currentTimeMillis())
     private var wakeLock: PowerManager.WakeLock? = null
     private var originalGovernors = mutableMapOf<Int, String>()
+    private var originalMinFreqs = mutableMapOf<Int, String>()
+
+    private fun suExec(cmd: String): String {
+        val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", cmd))
+        val result = proc.inputStream.bufferedReader().readText().trim()
+        proc.waitFor()
+        return result
+    }
 
     private fun lockCpuFrequency() {
         try {
             // Doze 화이트리스트 + Samsung 배터리 최적화 해제 (화면 꺼짐 시 프로세스 동결 방지)
             val pkg = packageName
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "dumpsys deviceidle whitelist +$pkg")).waitFor()
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "cmd appops set $pkg RUN_IN_BACKGROUND allow")).waitFor()
-            Runtime.getRuntime().exec(arrayOf("su", "-c", "cmd appops set $pkg RUN_ANY_IN_BACKGROUND allow")).waitFor()
+            suExec("dumpsys deviceidle whitelist +$pkg")
+            suExec("cmd appops set $pkg RUN_IN_BACKGROUND allow")
+            suExec("cmd appops set $pkg RUN_ANY_IN_BACKGROUND allow")
 
             val cpuPolicies = listOf(0, 4, 7) // Snapdragon 8 Gen 3: Little(0-3), Mid(4-6), Big(7)
             for (cpu in cpuPolicies) {
-                val govPath = "/sys/devices/system/cpu/cpu$cpu/cpufreq/scaling_governor"
+                val base = "/sys/devices/system/cpu/cpu$cpu/cpufreq"
                 // 현재 governor 저장
-                val readProc = Runtime.getRuntime().exec(arrayOf("su", "-c", "cat $govPath"))
-                val current = readProc.inputStream.bufferedReader().readText().trim()
-                readProc.waitFor()
-                if (current.isNotEmpty()) {
-                    originalGovernors[cpu] = current
+                val currentGov = suExec("cat $base/scaling_governor")
+                if (currentGov.isNotEmpty()) {
+                    originalGovernors[cpu] = currentGov
                 }
-                // performance 모드로 고정 (최대 클럭)
-                val writeProc = Runtime.getRuntime().exec(arrayOf("su", "-c", "echo performance > $govPath"))
-                writeProc.waitFor()
+                // 현재 scaling_min_freq 저장
+                val currentMin = suExec("cat $base/scaling_min_freq")
+                if (currentMin.isNotEmpty()) {
+                    originalMinFreqs[cpu] = currentMin
+                }
+                // performance governor 설정
+                suExec("echo performance > $base/scaling_governor")
+                // scaling_min_freq = scaling_max_freq (주파수 완전 고정)
+                val maxFreq = suExec("cat $base/scaling_max_freq")
+                if (maxFreq.isNotEmpty()) {
+                    suExec("echo $maxFreq > $base/scaling_min_freq")
+                }
             }
         } catch (_: Exception) {
             // Root 권한 없거나 경로 미지원 시 무시
@@ -68,11 +83,16 @@ class MainActivity : AppCompatActivity() {
     private fun unlockCpuFrequency() {
         try {
             for ((cpu, governor) in originalGovernors) {
-                val govPath = "/sys/devices/system/cpu/cpu$cpu/cpufreq/scaling_governor"
-                val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", "echo $governor > $govPath"))
-                proc.waitFor()
+                val base = "/sys/devices/system/cpu/cpu$cpu/cpufreq"
+                // 원래 scaling_min_freq 복원 (governor 복원 전에)
+                originalMinFreqs[cpu]?.let { minFreq ->
+                    suExec("echo $minFreq > $base/scaling_min_freq")
+                }
+                // 원래 governor 복원
+                suExec("echo $governor > $base/scaling_governor")
             }
             originalGovernors.clear()
+            originalMinFreqs.clear()
         } catch (_: Exception) {
             // 무시
         }
@@ -363,9 +383,9 @@ class MainActivity : AppCompatActivity() {
 
                             val executor = java.util.concurrent.Executors.newFixedThreadPool(numThreads)
 
-                            // CPU 클럭 로그 (측정 전) — 필요 시 주석 해제
-                            // val beforeFreq = readCpuFrequencies()
-                            // builder.append("  [Before] $beforeFreq\n")
+                            // CPU 클럭 로그 (측정 전)
+                            val beforeFreq = readCpuFrequencies()
+                            builder.append("  [Before] $beforeFreq\n")
 
                             // Warm-up
                             val warmupLatch = java.util.concurrent.CountDownLatch(numThreads)
@@ -477,9 +497,9 @@ class MainActivity : AppCompatActivity() {
                             batPw.println("$groupName,$modelFile,$sizeStr,mt_differential,${formatValue(energyShort)},${formatValue(energyLong)},${formatValue(diffEnergy)},${formatValue(energyPerInference)},${formatValue(avgCurrentShort)},${formatValue(avgCurrentLong)},${formatValue(shortElapsedS)},${formatValue(longElapsedS)},${shortSamples.size},${longSamples.size},$numThreads")
                             builder.append("[$groupName] $modelFile ($sizeStr KB): avg ${formatMs(avgMs)} ms, diff ${formatValue(diffEnergy)} uA·s, per_infer ${formatValue(energyPerInference)} uA·s\n")
 
-                            // CPU 클럭 로그 (측정 후) — 필요 시 주석 해제
-                            // val afterFreq = readCpuFrequencies()
-                            // builder.append("  [After]  $afterFreq\n")
+                            // CPU 클럭 로그 (측정 후)
+                            val afterFreq = readCpuFrequencies()
+                            builder.append("  [After]  $afterFreq\n")
 
                             Thread.sleep(3_000)
                         }
