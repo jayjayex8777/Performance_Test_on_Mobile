@@ -1,10 +1,7 @@
 <resources>
     <string name="app_name">infer</string>
-    <string name="latency_title">모델 지연시간 측정 (텐서프리로딩 + 모델 다중 실행)</string>
-    <string name="start_measure">Measure Start</string>
-    <string name="start_accuracy">Accuracy 스타트</string>
-    <string name="start_sparsity">Sparsity 스타트</string>
+    <string name="latency_title">Multi-thread Differential Measurement</string>
+    <string name="start_basic">Basic Models Measurement (CNN vs SNNs)</string>
+    <string name="start_improved">Improved Models Measurement (QCNN vs QSparse)</string>
     <string name="waiting_status">대기 중</string>
-    <string name="start_rebuttal_measure">Rebuttal Measure</string>
-    <string name="start_rebuttal_accuracy">Rebuttal Accuracy</string>
 </resources>
