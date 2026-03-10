@@ -40,6 +40,12 @@ class MainActivity : AppCompatActivity() {
 
     private fun lockCpuFrequency() {
         try {
+            // Doze 화이트리스트 + Samsung 배터리 최적화 해제 (화면 꺼짐 시 프로세스 동결 방지)
+            val pkg = packageName
+            Runtime.getRuntime().exec(arrayOf("su", "-c", "dumpsys deviceidle whitelist +$pkg")).waitFor()
+            Runtime.getRuntime().exec(arrayOf("su", "-c", "cmd appops set $pkg RUN_IN_BACKGROUND allow")).waitFor()
+            Runtime.getRuntime().exec(arrayOf("su", "-c", "cmd appops set $pkg RUN_ANY_IN_BACKGROUND allow")).waitFor()
+
             val cpuPolicies = listOf(0, 4, 7) // Snapdragon 8 Gen 3: Little(0-3), Mid(4-6), Big(7)
             for (cpu in cpuPolicies) {
                 val govPath = "/sys/devices/system/cpu/cpu$cpu/cpufreq/scaling_governor"
@@ -165,6 +171,12 @@ class MainActivity : AppCompatActivity() {
         coroutineScope.launch {
             val startNs = System.nanoTime()
             withContext(Dispatchers.IO) { lockCpuFrequency() }
+            // 안정화 대기 30초
+            for (i in 30 downTo 1) {
+                binding.statusText.text = "Basic Models 안정화 대기 ${i}초..."
+                delay(1000)
+            }
+            binding.statusText.text = "Basic Models 측정 중..."
             val result = withContext(Dispatchers.IO) {
                 val cnnModels = listOf(
                     "cnn_smallest_sensor.ptl",
@@ -220,6 +232,12 @@ class MainActivity : AppCompatActivity() {
         coroutineScope.launch {
             val startNs = System.nanoTime()
             withContext(Dispatchers.IO) { lockCpuFrequency() }
+            // 안정화 대기 30초
+            for (i in 30 downTo 1) {
+                binding.statusText.text = "Improved Models 안정화 대기 ${i}초..."
+                delay(1000)
+            }
+            binding.statusText.text = "Improved Models 측정 중..."
             val result = withContext(Dispatchers.IO) {
                 val qcnnModels = listOf(
                     "qcnn_smallest_sensor.ptl",
@@ -453,6 +471,9 @@ class MainActivity : AppCompatActivity() {
         binding.resultText.text = ""
         acquireWakeLock()
 
+        val savedBrightness = window.attributes.screenBrightness
+        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
+
         coroutineScope.launch {
             val startNs = System.nanoTime()
             withContext(Dispatchers.IO) { lockCpuFrequency() }
@@ -486,6 +507,7 @@ class MainActivity : AppCompatActivity() {
                 runAccuracyComparison(allModels, "basic_accuracy")
             }
             val elapsed = formatElapsed(System.nanoTime() - startNs)
+            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
             binding.resultText.text = result.message
             binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
             setButtonsEnabled(true)
@@ -501,6 +523,9 @@ class MainActivity : AppCompatActivity() {
         binding.statusText.text = "Improved Models Accuracy 측정 중..."
         binding.resultText.text = ""
         acquireWakeLock()
+
+        val savedBrightness = window.attributes.screenBrightness
+        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
 
         coroutineScope.launch {
             val startNs = System.nanoTime()
@@ -527,6 +552,7 @@ class MainActivity : AppCompatActivity() {
                 runAccuracyComparison(allModels, "improved_accuracy")
             }
             val elapsed = formatElapsed(System.nanoTime() - startNs)
+            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
             binding.resultText.text = result.message
             binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
             setButtonsEnabled(true)
