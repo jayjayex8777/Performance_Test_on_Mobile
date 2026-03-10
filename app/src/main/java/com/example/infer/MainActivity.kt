@@ -36,10 +36,8 @@ class MainActivity : AppCompatActivity() {
     private val timeSteps = 20
     private val random = Random(System.currentTimeMillis())
     private var wakeLock: PowerManager.WakeLock? = null
-    private var originalGovernors = mutableMapOf<Int, String>()
     private var originalMinFreqs = mutableMapOf<Int, String>()
 
-    // su -c 로 읽기 전용 명령 실행 (cat, dumpsys 등)
     private fun suExec(cmd: String): String {
         val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", cmd))
         val result = proc.inputStream.bufferedReader().readText().trim()
@@ -47,20 +45,8 @@ class MainActivity : AppCompatActivity() {
         return result
     }
 
-    // sysfs 파일에 값 쓰기: su를 대화형으로 열고 stdin에 직접 echo > 전달
-    // su -c "echo X > /path" 는 Magisk/KernelSU에서 >, | 등 쉘 연산자가 해석 안되는 문제 해결
-    private fun suWrite(path: String, value: String) {
-        val proc = Runtime.getRuntime().exec(arrayOf("su"))
-        proc.outputStream.bufferedWriter().use { writer ->
-            writer.write("echo '$value' > $path\n")
-            writer.flush()
-        }
-        proc.waitFor()
-        // 검증 로그
-        val verify = suExec("cat $path")
-        android.util.Log.d("CPULock", "suWrite $path = '$value' → verify: '$verify'")
-    }
-
+    // CPU 주파수 고정: 코어별 scaling_min_freq = scaling_max_freq
+    // 사전 조건: 측정 전 사용자가 adb shell su -c "setenforce 0" 수행
     private fun lockCpuFrequency() {
         try {
             // Doze 화이트리스트 + Samsung 배터리 최적화 해제 (화면 꺼짐 시 프로세스 동결 방지)
@@ -69,25 +55,20 @@ class MainActivity : AppCompatActivity() {
             suExec("cmd appops set $pkg RUN_IN_BACKGROUND allow")
             suExec("cmd appops set $pkg RUN_ANY_IN_BACKGROUND allow")
 
-            val cpuPolicies = listOf(0, 4, 7) // Snapdragon 8 Gen 3: Little(0-3), Mid(4-6), Big(7)
-            for (cpu in cpuPolicies) {
+            // 코어 0~7 전부 개별적으로 min_freq = max_freq 설정
+            for (cpu in 0..7) {
                 val base = "/sys/devices/system/cpu/cpu$cpu/cpufreq"
-                // 현재 governor 저장
-                val currentGov = suExec("cat $base/scaling_governor")
-                if (currentGov.isNotEmpty()) {
-                    originalGovernors[cpu] = currentGov
-                }
-                // 현재 scaling_min_freq 저장
+                // 현재 scaling_min_freq 저장 (원복용)
                 val currentMin = suExec("cat $base/scaling_min_freq")
                 if (currentMin.isNotEmpty()) {
                     originalMinFreqs[cpu] = currentMin
                 }
-                // performance governor 설정
-                suWrite("$base/scaling_governor", "performance")
-                // scaling_min_freq = scaling_max_freq (주파수 완전 고정)
+                // scaling_min_freq = scaling_max_freq (주파수 고정)
                 val maxFreq = suExec("cat $base/scaling_max_freq")
                 if (maxFreq.isNotEmpty()) {
-                    suWrite("$base/scaling_min_freq", maxFreq)
+                    suExec("echo $maxFreq > $base/scaling_min_freq")
+                    val verify = suExec("cat $base/scaling_min_freq")
+                    android.util.Log.d("CPULock", "cpu$cpu min_freq: $currentMin → $verify (max: $maxFreq)")
                 }
             }
         } catch (e: Exception) {
@@ -95,22 +76,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // CPU 주파수 원복: 저장해둔 원래 scaling_min_freq 복원
     private fun unlockCpuFrequency() {
         try {
-            for ((cpu, governor) in originalGovernors) {
+            for ((cpu, minFreq) in originalMinFreqs) {
                 val base = "/sys/devices/system/cpu/cpu$cpu/cpufreq"
-                // 원래 scaling_min_freq 복원 (governor 복원 전에)
-                originalMinFreqs[cpu]?.let { minFreq ->
-                    suWrite("$base/scaling_min_freq", minFreq)
-                }
-                // 원래 governor 복원
-                suWrite("$base/scaling_governor", governor)
+                suExec("echo $minFreq > $base/scaling_min_freq")
             }
-            originalGovernors.clear()
             originalMinFreqs.clear()
-        } catch (_: Exception) {
-            // 무시
-        }
+        } catch (_: Exception) { }
     }
 
     private fun readCpuFrequencies(): String {
