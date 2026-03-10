@@ -47,7 +47,7 @@ class MainActivity : AppCompatActivity() {
 
     // CPU 주파수 고정: 코어별 scaling_min_freq = scaling_max_freq
     // 사전 조건: 측정 전 사용자가 adb shell su -c "setenforce 0" 수행
-    // 대화형 su 세션을 열어 stdin으로 명령 전달 (su -c 에서 > 리다이렉트가 안 먹는 문제 해결)
+    // FileWriter로 sysfs에 직접 쓰기 (su 프로세스 불필요, setenforce 0 상태에서 동작)
     private fun lockCpuFrequency() {
         try {
             // Doze 화이트리스트 + Samsung 배터리 최적화 해제 (화면 꺼짐 시 프로세스 동결 방지)
@@ -56,37 +56,26 @@ class MainActivity : AppCompatActivity() {
             suExec("cmd appops set $pkg RUN_IN_BACKGROUND allow")
             suExec("cmd appops set $pkg RUN_ANY_IN_BACKGROUND allow")
 
-            // Phase 1: 현재 min_freq / max_freq 읽기 (suExec cat은 정상 동작)
-            val maxFreqs = mutableMapOf<Int, String>()
             for (cpu in 0..7) {
                 val base = "/sys/devices/system/cpu/cpu$cpu/cpufreq"
-                val currentMin = suExec("cat $base/scaling_min_freq")
+                // 현재 scaling_min_freq 저장 (원복용)
+                val currentMin = File("$base/scaling_min_freq").readText().trim()
                 if (currentMin.isNotEmpty()) {
                     originalMinFreqs[cpu] = currentMin
                 }
-                val maxFreq = suExec("cat $base/scaling_max_freq")
+                // scaling_max_freq 읽기
+                val maxFreq = File("$base/scaling_max_freq").readText().trim()
                 if (maxFreq.isNotEmpty()) {
-                    maxFreqs[cpu] = maxFreq
+                    // FileWriter로 scaling_min_freq에 max값 직접 쓰기
+                    val file = File("$base/scaling_min_freq")
+                    val writer = java.io.FileWriter(file)
+                    writer.write(maxFreq, 0, maxFreq.length)
+                    writer.flush()
+                    writer.close()
+                    // 검증
+                    val verify = File("$base/scaling_min_freq").readText().trim()
+                    android.util.Log.d("CPULock", "cpu$cpu min_freq: $currentMin → $verify (max: $maxFreq)")
                 }
-            }
-
-            // Phase 2: 대화형 su 세션 하나로 8개 코어 min_freq 일괄 쓰기
-            val proc = Runtime.getRuntime().exec(arrayOf("su"))
-            val writer = proc.outputStream.bufferedWriter()
-            for (cpu in 0..7) {
-                maxFreqs[cpu]?.let { maxFreq ->
-                    writer.write("echo $maxFreq > /sys/devices/system/cpu/cpu$cpu/cpufreq/scaling_min_freq\n")
-                }
-            }
-            writer.write("exit\n")
-            writer.flush()
-            writer.close()
-            proc.waitFor()
-
-            // Phase 3: 검증 로그
-            for (cpu in 0..7) {
-                val verify = suExec("cat /sys/devices/system/cpu/cpu$cpu/cpufreq/scaling_min_freq")
-                android.util.Log.d("CPULock", "cpu$cpu min_freq: ${originalMinFreqs[cpu]} → $verify (max: ${maxFreqs[cpu]})")
             }
         } catch (e: Exception) {
             android.util.Log.e("CPULock", "lockCpuFrequency failed", e)
@@ -96,15 +85,13 @@ class MainActivity : AppCompatActivity() {
     // CPU 주파수 원복: 저장해둔 원래 scaling_min_freq 복원
     private fun unlockCpuFrequency() {
         try {
-            val proc = Runtime.getRuntime().exec(arrayOf("su"))
-            val writer = proc.outputStream.bufferedWriter()
             for ((cpu, minFreq) in originalMinFreqs) {
-                writer.write("echo $minFreq > /sys/devices/system/cpu/cpu$cpu/cpufreq/scaling_min_freq\n")
+                val file = File("/sys/devices/system/cpu/cpu$cpu/cpufreq/scaling_min_freq")
+                val writer = java.io.FileWriter(file)
+                writer.write(minFreq, 0, minFreq.length)
+                writer.flush()
+                writer.close()
             }
-            writer.write("exit\n")
-            writer.flush()
-            writer.close()
-            proc.waitFor()
             originalMinFreqs.clear()
         } catch (_: Exception) { }
     }
