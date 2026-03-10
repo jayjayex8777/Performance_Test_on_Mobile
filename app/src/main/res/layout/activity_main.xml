@@ -46,6 +46,28 @@
             android:layout_height="wrap_content"
             android:text="@string/start_improved"
             android:textSize="13sp" />
+
+        <Space
+            android:layout_width="match_parent"
+            android:layout_height="8dp" />
+
+        <Button
+            android:id="@+id/basicAccuracyButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/start_basic_accuracy"
+            android:textSize="13sp" />
+
+        <Space
+            android:layout_width="match_parent"
+            android:layout_height="8dp" />
+
+        <Button
+            android:id="@+id/improvedAccuracyButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/start_improved_accuracy"
+            android:textSize="13sp" />
     </LinearLayout>
 
     <TextView

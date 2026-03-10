@@ -101,6 +101,12 @@ class MainActivity : AppCompatActivity() {
         binding.improvedButton.setOnClickListener {
             startImprovedMeasure()
         }
+        binding.basicAccuracyButton.setOnClickListener {
+            startBasicAccuracy()
+        }
+        binding.improvedAccuracyButton.setOnClickListener {
+            startImprovedAccuracy()
+        }
     }
 
     override fun onDestroy() {
@@ -395,11 +401,212 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ===================== Accuracy Comparison =====================
+
+    private fun startBasicAccuracy() {
+        setButtonsEnabled(false)
+        binding.statusText.text = "Basic Models Accuracy 측정 중..."
+        binding.resultText.text = ""
+        acquireWakeLock()
+
+        coroutineScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val cnnModels = listOf(
+                    "cnn_smallest_sensor.ptl",
+                    "cnn_small_sensor.ptl",
+                    "cnn_medium_sensor.ptl",
+                    "cnn_large_sensor.ptl",
+                    "cnn_largest_sensor.ptl",
+                )
+                val snnT3 = listOf(
+                    "snn_smallest_T3.ptl",
+                    "snn_small_T3.ptl",
+                    "snn_medium_T3.ptl",
+                    "snn_large_T3.ptl",
+                    "snn_largest_T3.ptl",
+                )
+                val studentKdT3 = listOf(
+                    "student_kd_smallest_T3.ptl",
+                    "student_kd_small_T3.ptl",
+                    "student_kd_medium_T3.ptl",
+                    "student_kd_large_T3.ptl",
+                    "student_kd_largest_T3.ptl",
+                )
+                val allModels = listOf(
+                    "CNN" to cnnModels,
+                    "SNN_T3" to snnT3,
+                    "STUDENT_KD_T3" to studentKdT3,
+                )
+                runAccuracyComparison(allModels, "basic_accuracy")
+            }
+            binding.resultText.text = result.message
+            binding.statusText.text = if (result.success) "완료" else "오류 발생"
+            setButtonsEnabled(true)
+            wakeUpScreen()
+            clearScreenFlags()
+            releaseWakeLock()
+        }
+    }
+
+    private fun startImprovedAccuracy() {
+        setButtonsEnabled(false)
+        binding.statusText.text = "Improved Models Accuracy 측정 중..."
+        binding.resultText.text = ""
+        acquireWakeLock()
+
+        coroutineScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                val qcnnModels = listOf(
+                    "qcnn_smallest_sensor.ptl",
+                    "qcnn_small_sensor.ptl",
+                    "qcnn_medium_sensor.ptl",
+                    "qcnn_large_sensor.ptl",
+                    "qcnn_largest_sensor.ptl",
+                )
+                val qsparseT3fr05 = listOf(
+                    "qsparse_smallest_T3_fr05.ptl",
+                    "qsparse_small_T3_fr05.ptl",
+                    "qsparse_medium_T3_fr05.ptl",
+                    "qsparse_large_T3_fr05.ptl",
+                    "qsparse_largest_T3_fr05.ptl",
+                )
+                val allModels = listOf(
+                    "QCNN" to qcnnModels,
+                    "QSPARSE_T3_FR05" to qsparseT3fr05,
+                )
+                runAccuracyComparison(allModels, "improved_accuracy")
+            }
+            binding.resultText.text = result.message
+            binding.statusText.text = if (result.success) "완료" else "오류 발생"
+            setButtonsEnabled(true)
+            wakeUpScreen()
+            clearScreenFlags()
+            releaseWakeLock()
+        }
+    }
+
+    private fun runAccuracyComparison(
+        allModels: List<Pair<String, List<String>>>,
+        csvPrefix: String
+    ): InferenceResult {
+        val csvFiles = assets.list("data")?.filter { it.endsWith(".csv") }?.sorted()
+            ?: return InferenceResult("data 폴더에서 CSV를 불러올 수 없습니다.", false)
+        if (csvFiles.isEmpty()) {
+            return InferenceResult("data 폴더에 CSV가 없습니다.", false)
+        }
+
+        val classNames = arrayOf("swipe_up", "swipe_down", "flick_up", "flick_down")
+
+        val builder = StringBuilder()
+        builder.append("=== ${csvPrefix.uppercase().replace("_", " ")} ===\n")
+        builder.append("CSV 파일 수: ${csvFiles.size} (${csvFiles.size / 4} per gesture)\n\n")
+
+        return try {
+            val outDir = getOutputDir()
+            val outFile = nextResultFile(outDir, csvPrefix)
+
+            outFile.printWriter().use { pw ->
+                pw.println("group,model,model_size_kb,total,correct,accuracy,swipe_up_acc,swipe_down_acc,flick_up_acc,flick_down_acc")
+
+                for ((groupName, models) in allModels) {
+                    val groupT = when {
+                        groupName.contains("T3") -> 3
+                        groupName.contains("T5") -> 5
+                        groupName.contains("T10") -> 10
+                        groupName.contains("T15") -> 15
+                        else -> timeSteps
+                    }
+
+                    builder.append("── $groupName (T=$groupT) ──\n")
+
+                    for (modelFile in models) {
+                        val modelPath = assetFilePath(modelFile)
+                        val modelSizeKb = File(modelPath).length() / 1024.0
+                        val sizeStr = String.format("%.1f", modelSizeKb)
+
+                        val module = try {
+                            LiteModuleLoader.load(modelPath)
+                        } catch (t: Throwable) {
+                            builder.append("  $modelFile ($sizeStr KB): 로드 실패 (${t.localizedMessage})\n")
+                            continue
+                        }
+
+                        val totalPerClass = IntArray(classNames.size)
+                        val correctPerClass = IntArray(classNames.size)
+                        var total = 0
+                        var correct = 0
+
+                        for (csv in csvFiles) {
+                            val label = inferLabel(csv) ?: continue
+                            val tensor = loadCsvAsTensor("data/$csv", groupT)
+                            val output = module.forward(IValue.from(tensor)).toTensor()
+                            val scores = output.dataAsFloatArray
+                            var maxIdx = 0
+                            var maxVal = scores[0]
+                            for (i in 1 until scores.size) {
+                                if (scores[i] > maxVal) {
+                                    maxVal = scores[i]
+                                    maxIdx = i
+                                }
+                            }
+                            total++
+                            totalPerClass[label]++
+                            if (maxIdx == label) {
+                                correct++
+                                correctPerClass[label]++
+                            }
+                        }
+
+                        val acc = if (total > 0) correct.toDouble() / total.toDouble() * 100.0 else 0.0
+                        val classAccs = classNames.indices.map { i ->
+                            if (totalPerClass[i] > 0) correctPerClass[i].toDouble() / totalPerClass[i].toDouble() * 100.0 else 0.0
+                        }
+
+                        pw.println(
+                            "$groupName,$modelFile,$sizeStr,$total,$correct," +
+                                "${formatValue(acc)}," +
+                                classAccs.joinToString(",") { formatValue(it) }
+                        )
+
+                        builder.append("  $modelFile ($sizeStr KB): ${String.format("%.2f", acc)}% ($correct/$total)\n")
+                        for (i in classNames.indices) {
+                            if (totalPerClass[i] == 0) continue
+                            val classAcc = classAccs[i]
+                            builder.append("    ${classNames[i]}: ${correctPerClass[i]}/${totalPerClass[i]} (${String.format("%.2f", classAcc)}%)\n")
+                        }
+
+                        module.destroy()
+                        System.gc()
+                    }
+                    builder.append("\n")
+                }
+            }
+
+            builder.append("결과 CSV: ${outFile.absolutePath}")
+            InferenceResult(builder.toString(), true)
+        } catch (t: Throwable) {
+            InferenceResult("Accuracy 측정 중 오류: ${t.localizedMessage}", false)
+        }
+    }
+
+    private fun inferLabel(name: String): Int? {
+        val lower = name.lowercase()
+        return when {
+            lower.contains("swipe_up") -> 0
+            lower.contains("swipe_down") -> 1
+            lower.contains("flick_up") -> 2
+            lower.contains("flick_down") -> 3
+            else -> null
+        }
+    }
+
     // ===================== Utilities =====================
 
     private fun setButtonsEnabled(enabled: Boolean) {
         binding.basicButton.isEnabled = enabled
         binding.improvedButton.isEnabled = enabled
+        binding.basicAccuracyButton.isEnabled = enabled
+        binding.improvedAccuracyButton.isEnabled = enabled
     }
 
     private fun loadCsvAsTensor(path: String, T: Int = timeSteps): Tensor {
