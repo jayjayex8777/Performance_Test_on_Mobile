@@ -36,6 +36,41 @@ class MainActivity : AppCompatActivity() {
     private val timeSteps = 20
     private val random = Random(System.currentTimeMillis())
     private var wakeLock: PowerManager.WakeLock? = null
+    private var originalGovernors = mutableMapOf<Int, String>()
+
+    private fun lockCpuFrequency() {
+        try {
+            val cpuPolicies = listOf(0, 4, 7) // Snapdragon 8 Gen 3: Little(0-3), Mid(4-6), Big(7)
+            for (cpu in cpuPolicies) {
+                val govPath = "/sys/devices/system/cpu/cpu$cpu/cpufreq/scaling_governor"
+                // 현재 governor 저장
+                val readProc = Runtime.getRuntime().exec(arrayOf("su", "-c", "cat $govPath"))
+                val current = readProc.inputStream.bufferedReader().readText().trim()
+                readProc.waitFor()
+                if (current.isNotEmpty()) {
+                    originalGovernors[cpu] = current
+                }
+                // performance 모드로 고정 (최대 클럭)
+                val writeProc = Runtime.getRuntime().exec(arrayOf("su", "-c", "echo performance > $govPath"))
+                writeProc.waitFor()
+            }
+        } catch (_: Exception) {
+            // Root 권한 없거나 경로 미지원 시 무시
+        }
+    }
+
+    private fun unlockCpuFrequency() {
+        try {
+            for ((cpu, governor) in originalGovernors) {
+                val govPath = "/sys/devices/system/cpu/cpu$cpu/cpufreq/scaling_governor"
+                val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", "echo $governor > $govPath"))
+                proc.waitFor()
+            }
+            originalGovernors.clear()
+        } catch (_: Exception) {
+            // 무시
+        }
+    }
 
     private fun acquireWakeLock() {
         val pm = getSystemService(POWER_SERVICE) as PowerManager
@@ -111,6 +146,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        unlockCpuFrequency()
         releaseWakeLock()
         coroutineScope.cancel()
     }
@@ -127,6 +163,8 @@ class MainActivity : AppCompatActivity() {
         window.attributes = window.attributes.apply { screenBrightness = 0.01f }
 
         coroutineScope.launch {
+            val startNs = System.nanoTime()
+            withContext(Dispatchers.IO) { lockCpuFrequency() }
             val result = withContext(Dispatchers.IO) {
                 val cnnModels = listOf(
                     "cnn_smallest_sensor.ptl",
@@ -156,12 +194,14 @@ class MainActivity : AppCompatActivity() {
                 )
                 runDifferentialMeasurement(allModels, "basic")
             }
+            val elapsed = formatElapsed(System.nanoTime() - startNs)
             window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
             binding.resultText.text = result.message
-            binding.statusText.text = if (result.success) "완료" else "오류 발생"
+            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
             setButtonsEnabled(true)
             wakeUpScreen()
             clearScreenFlags()
+            unlockCpuFrequency()
             releaseWakeLock()
         }
     }
@@ -178,6 +218,8 @@ class MainActivity : AppCompatActivity() {
         window.attributes = window.attributes.apply { screenBrightness = 0.01f }
 
         coroutineScope.launch {
+            val startNs = System.nanoTime()
+            withContext(Dispatchers.IO) { lockCpuFrequency() }
             val result = withContext(Dispatchers.IO) {
                 val qcnnModels = listOf(
                     "qcnn_smallest_sensor.ptl",
@@ -199,12 +241,14 @@ class MainActivity : AppCompatActivity() {
                 )
                 runDifferentialMeasurement(allModels, "improved")
             }
+            val elapsed = formatElapsed(System.nanoTime() - startNs)
             window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
             binding.resultText.text = result.message
-            binding.statusText.text = if (result.success) "완료" else "오류 발생"
+            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
             setButtonsEnabled(true)
             wakeUpScreen()
             clearScreenFlags()
+            unlockCpuFrequency()
             releaseWakeLock()
         }
     }
@@ -410,6 +454,8 @@ class MainActivity : AppCompatActivity() {
         acquireWakeLock()
 
         coroutineScope.launch {
+            val startNs = System.nanoTime()
+            withContext(Dispatchers.IO) { lockCpuFrequency() }
             val result = withContext(Dispatchers.IO) {
                 val cnnModels = listOf(
                     "cnn_smallest_sensor.ptl",
@@ -439,11 +485,13 @@ class MainActivity : AppCompatActivity() {
                 )
                 runAccuracyComparison(allModels, "basic_accuracy")
             }
+            val elapsed = formatElapsed(System.nanoTime() - startNs)
             binding.resultText.text = result.message
-            binding.statusText.text = if (result.success) "완료" else "오류 발생"
+            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
             setButtonsEnabled(true)
             wakeUpScreen()
             clearScreenFlags()
+            unlockCpuFrequency()
             releaseWakeLock()
         }
     }
@@ -455,6 +503,8 @@ class MainActivity : AppCompatActivity() {
         acquireWakeLock()
 
         coroutineScope.launch {
+            val startNs = System.nanoTime()
+            withContext(Dispatchers.IO) { lockCpuFrequency() }
             val result = withContext(Dispatchers.IO) {
                 val qcnnModels = listOf(
                     "qcnn_smallest_sensor.ptl",
@@ -476,11 +526,13 @@ class MainActivity : AppCompatActivity() {
                 )
                 runAccuracyComparison(allModels, "improved_accuracy")
             }
+            val elapsed = formatElapsed(System.nanoTime() - startNs)
             binding.resultText.text = result.message
-            binding.statusText.text = if (result.success) "완료" else "오류 발생"
+            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
             setButtonsEnabled(true)
             wakeUpScreen()
             clearScreenFlags()
+            unlockCpuFrequency()
             releaseWakeLock()
         }
     }
@@ -694,6 +746,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun formatMs(value: Double): String = String.format("%.3f", value)
     private fun formatValue(value: Double): String = String.format("%.6f", value)
+
+    private fun formatElapsed(ns: Long): String {
+        val totalSec = ns / 1_000_000_000
+        val h = totalSec / 3600
+        val m = (totalSec % 3600) / 60
+        val s = totalSec % 60
+        return if (h > 0) "${h}시간 ${m}분 ${s}초" else if (m > 0) "${m}분 ${s}초" else "${s}초"
+    }
 
     private fun nextResultFile(dir: File, prefix: String): File {
         var idx = 0
