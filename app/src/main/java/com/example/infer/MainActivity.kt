@@ -1,6 +1,7 @@
 package com.example.infer
 
 import android.os.Bundle
+import android.os.PowerManager
 import android.os.SystemClock
 import android.os.BatteryManager
 import android.os.Environment
@@ -33,6 +34,28 @@ class MainActivity : AppCompatActivity() {
     private val coroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val timeSteps = 20
     private val random = Random(System.currentTimeMillis())
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    private fun acquireWakeLock() {
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "infer:measurement")
+        wakeLock?.acquire(30 * 60 * 1000L) // 30분 타임아웃 safety net
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
+    }
+
+    @Suppress("DEPRECATION")
+    private fun wakeUpScreen() {
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        val screenLock = pm.newWakeLock(
+            PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
+            "infer:screen_on"
+        )
+        screenLock.acquire(3000) // 3초 후 자동 해제
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -64,6 +87,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        releaseWakeLock()
         coroutineScope.cancel()
     }
 
@@ -71,6 +95,7 @@ class MainActivity : AppCompatActivity() {
         setButtonsEnabled(false)
         binding.statusText.text = "Latency + Battery 측정 중..."
         binding.resultText.text = ""
+        acquireWakeLock()
 
         // 측정 전 화면 밝기를 최소로 (OLED에서 전력 소모 최소화)
         val savedBrightness = window.attributes.screenBrightness
@@ -85,6 +110,8 @@ class MainActivity : AppCompatActivity() {
             binding.resultText.text = result.message
             binding.statusText.text = if (result.success) "완료" else "오류 발생"
             setButtonsEnabled(true)
+            wakeUpScreen()
+            releaseWakeLock()
         }
     }
 
@@ -427,6 +454,7 @@ class MainActivity : AppCompatActivity() {
         setButtonsEnabled(false)
         binding.statusText.text = "Accuracy 측정 중..."
         binding.resultText.text = ""
+        acquireWakeLock()
 
         coroutineScope.launch {
             val result = withContext(Dispatchers.IO) {
@@ -435,6 +463,8 @@ class MainActivity : AppCompatActivity() {
             binding.resultText.text = result.message
             binding.statusText.text = if (result.success) "완료" else "오류 발생"
             setButtonsEnabled(true)
+            wakeUpScreen()
+            releaseWakeLock()
         }
     }
 
@@ -561,6 +591,7 @@ class MainActivity : AppCompatActivity() {
         setButtonsEnabled(false)
         binding.statusText.text = "Rebuttal Latency + Battery 측정 중..."
         binding.resultText.text = ""
+        acquireWakeLock()
         coroutineScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runRebuttalInference()
@@ -568,6 +599,8 @@ class MainActivity : AppCompatActivity() {
             binding.resultText.text = result.message
             binding.statusText.text = if (result.success) "완료" else "오류 발생"
             setButtonsEnabled(true)
+            wakeUpScreen()
+            releaseWakeLock()
         }
     }
 
@@ -575,6 +608,7 @@ class MainActivity : AppCompatActivity() {
         setButtonsEnabled(false)
         binding.statusText.text = "Rebuttal Accuracy 측정 중..."
         binding.resultText.text = ""
+        acquireWakeLock()
         coroutineScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runRebuttalAccuracy()
@@ -582,6 +616,8 @@ class MainActivity : AppCompatActivity() {
             binding.resultText.text = result.message
             binding.statusText.text = if (result.success) "완료" else "오류 발생"
             setButtonsEnabled(true)
+            wakeUpScreen()
+            releaseWakeLock()
         }
     }
 
@@ -1050,6 +1086,7 @@ class MainActivity : AppCompatActivity() {
         setButtonsEnabled(false)
         binding.statusText.text = "Amplified Measure 측정 중..."
         binding.resultText.text = ""
+        acquireWakeLock()
 
         // 측정 전 화면 밝기를 최소로 (OLED에서 전력 소모 최소화)
         val savedBrightness = window.attributes.screenBrightness
@@ -1064,6 +1101,8 @@ class MainActivity : AppCompatActivity() {
             binding.resultText.text = result.message
             binding.statusText.text = if (result.success) "완료" else "오류 발생"
             setButtonsEnabled(true)
+            wakeUpScreen()
+            releaseWakeLock()
         }
     }
 
