@@ -78,6 +78,22 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun readCpuFrequencies(): String {
+        val sb = StringBuilder()
+        for (cpu in 0..7) {
+            val freqPath = "/sys/devices/system/cpu/cpu$cpu/cpufreq/scaling_cur_freq"
+            val mhz = try {
+                val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", "cat $freqPath"))
+                val khz = proc.inputStream.bufferedReader().readText().trim()
+                proc.waitFor()
+                if (khz.isNotEmpty()) "${khz.toLong() / 1000}MHz" else "N/A"
+            } catch (_: Exception) { "N/A" }
+            if (sb.isNotEmpty()) sb.append(", ")
+            sb.append("cpu$cpu: $mhz")
+        }
+        return sb.toString()
+    }
+
     private fun acquireWakeLock() {
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "infer:measurement")
@@ -340,6 +356,10 @@ class MainActivity : AppCompatActivity() {
 
                             val executor = java.util.concurrent.Executors.newFixedThreadPool(numThreads)
 
+                            // CPU 클럭 로그 (측정 전)
+                            val beforeFreq = readCpuFrequencies()
+                            builder.append("  [Before] $beforeFreq\n")
+
                             // Warm-up
                             val warmupLatch = java.util.concurrent.CountDownLatch(numThreads)
                             for (t in 0 until numThreads) {
@@ -449,6 +469,10 @@ class MainActivity : AppCompatActivity() {
                             latPw.println("$groupName,$modelFile,$sizeStr,${formatMs(totalMs)},${formatMs(avgMs)},$forwardCount,$numThreads")
                             batPw.println("$groupName,$modelFile,$sizeStr,mt_differential,${formatValue(energyShort)},${formatValue(energyLong)},${formatValue(diffEnergy)},${formatValue(energyPerInference)},${formatValue(avgCurrentShort)},${formatValue(avgCurrentLong)},${formatValue(shortElapsedS)},${formatValue(longElapsedS)},${shortSamples.size},${longSamples.size},$numThreads")
                             builder.append("[$groupName] $modelFile ($sizeStr KB): avg ${formatMs(avgMs)} ms, diff ${formatValue(diffEnergy)} uA·s, per_infer ${formatValue(energyPerInference)} uA·s\n")
+
+                            // CPU 클럭 로그 (측정 후)
+                            val afterFreq = readCpuFrequencies()
+                            builder.append("  [After]  $afterFreq\n")
 
                             Thread.sleep(3_000)
                         }
