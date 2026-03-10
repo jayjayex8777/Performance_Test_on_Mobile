@@ -1,4 +1,4 @@
-ㅕㅑㅐㅕㅑㅐㅕㅑㅒpackage com.example.infer
+package com.example.infer
 
 import android.os.Bundle
 import android.os.SystemClock
@@ -72,10 +72,16 @@ class MainActivity : AppCompatActivity() {
         binding.statusText.text = "Latency + Battery 측정 중..."
         binding.resultText.text = ""
 
+        // 측정 전 화면 밝기를 최소로 (OLED에서 전력 소모 최소화)
+        val savedBrightness = window.attributes.screenBrightness
+        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
+
         coroutineScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runInference()
             }
+            // 측정 완료 후 밝기 복원
+            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
             binding.resultText.text = result.message
             binding.statusText.text = if (result.success) "완료" else "오류 발생"
             setButtonsEnabled(true)
@@ -194,6 +200,26 @@ class MainActivity : AppCompatActivity() {
                                 var totalForwardNs = 0L
                                 var forwardCount = 0
 
+                                val groupT = when {
+                                    groupName.contains("T3") -> 3
+                                    groupName.contains("T5") -> 5
+                                    groupName.contains("T10") -> 10
+                                    groupName.contains("T15") -> 15
+                                    else -> timeSteps
+                                }
+
+                                // [Phase 1] 텐서를 메모리에 미리 전부 로딩 (I/O를 측정 구간에서 완전 분리)
+                                val preloadedTensors = csvFiles.map { csv ->
+                                    val tensor = loadCsvAsTensor("data/$csv", groupT)
+                                    if (scale == 1) tensor else scaleTensorH(tensor, scale)
+                                }
+
+                                // Warm-up: 미리 로딩된 텐서로 5회 추론 (JIT/캐시 안정화, 측정 제외)
+                                for (i in 0 until 5) {
+                                    module.forward(IValue.from(preloadedTensors[i])).toTensor()
+                                }
+
+                                // 배터리 샘플링은 warm-up 후 시작
                                 var stopSampling = false
                                 var sampler: Job? = null
                                 val currentSamples = mutableListOf<Int>()
@@ -216,23 +242,18 @@ class MainActivity : AppCompatActivity() {
                                     }
                                 }
 
-                                val groupT = when {
-                                    groupName.contains("T3") -> 3
-                                    groupName.contains("T5") -> 5
-                                    groupName.contains("T10") -> 10
-                                    groupName.contains("T15") -> 15
-                                    else -> timeSteps
+                                // [Phase 2] 순수 추론만 100회 반복 (I/O 완전 제거, 배터리 샘플 극대화)
+                                val repeatCount = 100
+                                for (rep in 0 until repeatCount) {
+                                    for (tensor in preloadedTensors) {
+                                        val start = System.nanoTime()
+                                        module.forward(IValue.from(tensor)).toTensor()
+                                        totalForwardNs += System.nanoTime() - start
+                                        forwardCount += 1
+                                    }
                                 }
-
-                                for (csv in csvFiles) {
-                                    val tensor = loadCsvAsTensor("data/$csv", groupT)
-                                    val scaled = if (scale == 1) tensor else scaleTensorH(tensor, scale)
-                                    val start = System.nanoTime()
-                                    module.forward(IValue.from(scaled)).toTensor()
-                                    totalForwardNs += System.nanoTime() - start
-                                    forwardCount += 1
-                                    System.gc()
-                                }
+                                // GC는 모델 단위로 1회만 (측정 루프 밖)
+                                System.gc()
                                 stopSampling = true
                                 sampler?.let { kotlinx.coroutines.runBlocking { it.join() } }
 
@@ -1030,10 +1051,16 @@ class MainActivity : AppCompatActivity() {
         binding.statusText.text = "Amplified Measure 측정 중..."
         binding.resultText.text = ""
 
+        // 측정 전 화면 밝기를 최소로 (OLED에서 전력 소모 최소화)
+        val savedBrightness = window.attributes.screenBrightness
+        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
+
         coroutineScope.launch {
             val result = withContext(Dispatchers.IO) {
                 runAmpInference()
             }
+            // 측정 완료 후 밝기 복원
+            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
             binding.resultText.text = result.message
             binding.statusText.text = if (result.success) "완료" else "오류 발생"
             setButtonsEnabled(true)
@@ -1077,16 +1104,19 @@ class MainActivity : AppCompatActivity() {
             "QCNN" to qcnnModels,
             "QSPARSE_T3_FR05" to qsparseT3fr05,
         )
-        val ampFactors = listOf(1, 2, 4, 8, 16)
+        val ampFactors = listOf(1, 2)
+        val numThreads = 8
+        val N = 50
 
         val batteryManager = getSystemService(BATTERY_SERVICE) as BatteryManager
         val currentSupported =
             batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW) != Int.MIN_VALUE
 
         val builder = StringBuilder()
-        builder.append("=== Amplified Measure ===\n")
+        builder.append("=== Amplified Measure (Multi-thread Differential) ===\n")
         builder.append("CSV 파일 수: ${csvFiles.size}\n")
-        builder.append("증폭 배율: ${ampFactors.joinToString(",")}\n\n")
+        builder.append("증폭 배율: ${ampFactors.joinToString(",")}\n")
+        builder.append("병렬 스레드: $numThreads, N=$N\n\n")
 
         return try {
             val outDir = getOutputDir()
@@ -1095,11 +1125,11 @@ class MainActivity : AppCompatActivity() {
 
             latencyFile.printWriter().use { latPw ->
                 batteryFile.printWriter().use { batPw ->
-                    latPw.println("amp,group,model,total_forward_ms,avg_forward_ms,count")
-                    batPw.println("amp,group,model,avg_current_uA,est_mAh,current_samples")
+                    latPw.println("amp,group,model,total_forward_ms,avg_forward_ms,count,threads")
+                    batPw.println("amp,group,model,method,energy_short_uAs,energy_long_uAs,diff_energy_uAs,energy_per_inference_uAs,avg_current_short_uA,avg_current_long_uA,time_short_s,time_long_s,samples_short,samples_long,threads")
 
                     for (amp in ampFactors) {
-                        builder.append("--- ${amp}x Amplified ---\n")
+                        builder.append("--- ${amp}x (${numThreads} threads) ---\n")
 
                         for ((groupName, models) in allModels) {
                             val groupT = when {
@@ -1112,58 +1142,135 @@ class MainActivity : AppCompatActivity() {
 
                             for (modelFile in models) {
                                 val modulePath = assetFilePath(modelFile)
-                                val module = LiteModuleLoader.load(modulePath)
-                                var totalForwardNs = 0L
-                                var forwardCount = 0
 
-                                var stopSampling = false
-                                var sampler: Job? = null
-                                val currentSamples = mutableListOf<Int>()
-                                var chargeCoulomb = 0.0
-                                var lastNs = System.nanoTime()
+                                // 텐서 프리로딩 (1회, 스레드간 파티션으로 분할하여 공유)
+                                val preloadedTensors = csvFiles.map { csv ->
+                                    val tensor = loadCsvAsTensor("data/$csv", groupT)
+                                    if (amp == 1) tensor else repeatTensorRows(tensor, amp)
+                                }
+
+                                // 8개 Module 인스턴스 로딩 (스레드당 1개)
+                                val modules = (0 until numThreads).map { LiteModuleLoader.load(modulePath) }
+
+                                // 스레드별 텐서 파티션 (각 스레드가 다른 텐서만 접근 → race condition 방지)
+                                val chunkSize = (preloadedTensors.size + numThreads - 1) / numThreads
+                                val partitions = (0 until numThreads).map { t ->
+                                    val start = t * chunkSize
+                                    val end = minOf(start + chunkSize, preloadedTensors.size)
+                                    if (start < preloadedTensors.size) preloadedTensors.subList(start, end) else emptyList()
+                                }
+
+                                val executor = java.util.concurrent.Executors.newFixedThreadPool(numThreads)
+
+                                // Warm-up: 각 Module을 병렬로 워밍업
+                                val warmupLatch = java.util.concurrent.CountDownLatch(numThreads)
+                                for (t in 0 until numThreads) {
+                                    executor.submit {
+                                        val tensors = partitions[t]
+                                        for (i in 0 until minOf(5, tensors.size)) {
+                                            modules[t].forward(IValue.from(tensors[i])).toTensor()
+                                        }
+                                        warmupLatch.countDown()
+                                    }
+                                }
+                                warmupLatch.await()
+
+                                // --- Phase 1: N회 × 8스레드 병렬 inference ---
+                                Thread.sleep(3_000)
+                                var stopShort = false
+                                val shortSamples = mutableListOf<Int>()
+                                var shortSampler: Job? = null
+                                val shortStartNs = System.nanoTime()
                                 if (currentSupported) {
-                                    sampler = coroutineScope.launch(Dispatchers.IO) {
-                                        while (!stopSampling) {
-                                            val nowNs = System.nanoTime()
-                                            val dt = (nowNs - lastNs) / 1_000_000_000.0
-                                            lastNs = nowNs
+                                    shortSampler = coroutineScope.launch(Dispatchers.IO) {
+                                        while (!stopShort) {
                                             val raw = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
-                                            if (raw != Int.MIN_VALUE) {
-                                                val uA = kotlin.math.abs(raw)
-                                                currentSamples.add(uA)
-                                                chargeCoulomb += (uA / 1_000_000.0) * dt
-                                            }
+                                            if (raw != Int.MIN_VALUE) shortSamples.add(kotlin.math.abs(raw))
                                             delay(50)
                                         }
                                     }
                                 }
-
-                                for (csv in csvFiles) {
-                                    val tensor = loadCsvAsTensor("data/$csv", groupT)
-                                    val ampTensor = if (amp == 1) tensor else repeatTensorRows(tensor, amp)
-                                    val start = System.nanoTime()
-                                    module.forward(IValue.from(ampTensor)).toTensor()
-                                    totalForwardNs += System.nanoTime() - start
-                                    forwardCount += 1
-                                    System.gc()
+                                val latch1 = java.util.concurrent.CountDownLatch(numThreads)
+                                for (t in 0 until numThreads) {
+                                    executor.submit {
+                                        val mod = modules[t]
+                                        val tensors = partitions[t]
+                                        for (rep in 0 until N) {
+                                            for (tensor in tensors) {
+                                                mod.forward(IValue.from(tensor)).toTensor()
+                                            }
+                                        }
+                                        latch1.countDown()
+                                    }
                                 }
-                                stopSampling = true
-                                sampler?.let { kotlinx.coroutines.runBlocking { it.join() } }
+                                latch1.await()
+                                stopShort = true
+                                shortSampler?.let { kotlinx.coroutines.runBlocking { it.join() } }
+                                val shortElapsedS = (System.nanoTime() - shortStartNs) / 1_000_000_000.0
+                                val avgCurrentShort = if (shortSamples.isNotEmpty()) shortSamples.average() else 0.0
+                                val energyShort = avgCurrentShort * shortElapsedS
+
+                                // --- Phase 2: 2N회 × 8스레드 병렬 inference (latency 측정 포함) ---
+                                Thread.sleep(3_000)
+                                var stopLong = false
+                                val longSamples = mutableListOf<Int>()
+                                var longSampler: Job? = null
+                                val longStartNs = System.nanoTime()
+                                if (currentSupported) {
+                                    longSampler = coroutineScope.launch(Dispatchers.IO) {
+                                        while (!stopLong) {
+                                            val raw = batteryManager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW)
+                                            if (raw != Int.MIN_VALUE) longSamples.add(kotlin.math.abs(raw))
+                                            delay(50)
+                                        }
+                                    }
+                                }
+                                val latencyPerThread = Array(numThreads) { LongArray(2) } // [totalNs, count]
+                                val latch2 = java.util.concurrent.CountDownLatch(numThreads)
+                                for (t in 0 until numThreads) {
+                                    executor.submit {
+                                        val mod = modules[t]
+                                        val tensors = partitions[t]
+                                        var threadNs = 0L
+                                        var threadCount = 0L
+                                        for (rep in 0 until 2 * N) {
+                                            for (tensor in tensors) {
+                                                val s = System.nanoTime()
+                                                mod.forward(IValue.from(tensor)).toTensor()
+                                                threadNs += System.nanoTime() - s
+                                                threadCount++
+                                            }
+                                        }
+                                        latencyPerThread[t][0] = threadNs
+                                        latencyPerThread[t][1] = threadCount
+                                        latch2.countDown()
+                                    }
+                                }
+                                latch2.await()
+                                stopLong = true
+                                longSampler?.let { kotlinx.coroutines.runBlocking { it.join() } }
+                                val longElapsedS = (System.nanoTime() - longStartNs) / 1_000_000_000.0
+                                val avgCurrentLong = if (longSamples.isNotEmpty()) longSamples.average() else 0.0
+                                val energyLong = avgCurrentLong * longElapsedS
+
+                                // Cleanup
+                                executor.shutdown()
+                                for (mod in modules) mod.destroy()
+                                System.gc()
+
+                                // --- Differential 결과 계산 ---
+                                val totalForwardNs = latencyPerThread.sumOf { it[0] }
+                                val forwardCount = latencyPerThread.sumOf { it[1] }.toInt()
+                                val diffEnergy = max(0.0, energyLong - energyShort)
+                                val totalInferencesInDiff = preloadedTensors.size * N
+                                val energyPerInference = if (totalInferencesInDiff > 0) diffEnergy / totalInferencesInDiff else 0.0
 
                                 val totalMs = totalForwardNs / 1_000_000.0
                                 val avgMs = if (forwardCount > 0) totalMs / forwardCount else 0.0
-                                latPw.println("${amp}x,$groupName,$modelFile,${formatMs(totalMs)},${formatMs(avgMs)},$forwardCount")
+                                latPw.println("${amp}x,$groupName,$modelFile,${formatMs(totalMs)},${formatMs(avgMs)},$forwardCount,$numThreads")
+                                batPw.println("${amp}x,$groupName,$modelFile,mt_differential,${formatValue(energyShort)},${formatValue(energyLong)},${formatValue(diffEnergy)},${formatValue(energyPerInference)},${formatValue(avgCurrentShort)},${formatValue(avgCurrentLong)},${formatValue(shortElapsedS)},${formatValue(longElapsedS)},${shortSamples.size},${longSamples.size},$numThreads")
+                                builder.append("[${amp}x][$groupName] $modelFile: avg ${formatMs(avgMs)} ms, diff ${formatValue(diffEnergy)} uA·s, per_infer ${formatValue(energyPerInference)} uA·s\n")
 
-                                val avgCurrent = if (currentSamples.isNotEmpty()) currentSamples.average() else 0.0
-                                val estmAh = chargeCoulomb * 1000.0 / 3600.0
-                                batPw.println(
-                                    "${amp}x,$groupName,$modelFile," +
-                                        "${formatValue(avgCurrent)}," +
-                                        "${formatValue(estmAh)}," +
-                                        currentSamples.size
-                                )
-
-                                builder.append("[${amp}x][$groupName] $modelFile: avg ${formatMs(avgMs)} ms, ${formatValue(avgCurrent)} uA\n")
                                 Thread.sleep(3_000)
                             }
                         }
