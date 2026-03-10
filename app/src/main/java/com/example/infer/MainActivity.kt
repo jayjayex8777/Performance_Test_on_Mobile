@@ -49,14 +49,20 @@ class MainActivity : AppCompatActivity() {
     // 사전 조건: 측정 전 사용자가 adb shell su -c "setenforce 0" 수행
     // FileWriter로 sysfs에 직접 쓰기 (su 프로세스 불필요, setenforce 0 상태에서 동작)
     private fun lockCpuFrequency() {
+        // Doze 화이트리스트 + Samsung 배터리 최적화 해제 (실패해도 CPU 고정에는 영향 없음)
         try {
-            // Doze 화이트리스트 + Samsung 배터리 최적화 해제 (화면 꺼짐 시 프로세스 동결 방지)
             val pkg = packageName
             suExec("dumpsys deviceidle whitelist +$pkg")
             suExec("cmd appops set $pkg RUN_IN_BACKGROUND allow")
             suExec("cmd appops set $pkg RUN_ANY_IN_BACKGROUND allow")
+        } catch (e: Exception) {
+            android.util.Log.w("CPULock", "Doze/Samsung permission setup failed (non-fatal)", e)
+        }
 
-            for (cpu in 0..7) {
+        // CPU 주파수 고정: FileWriter로 sysfs 직접 쓰기
+        // 사전 조건: setenforce 0 + chmod -R 777 /sys/devices/system/cpu/cpu*/cpufreq/
+        for (cpu in 0..7) {
+            try {
                 val base = "/sys/devices/system/cpu/cpu$cpu/cpufreq"
                 // 현재 scaling_min_freq 저장 (원복용)
                 val currentMin = File("$base/scaling_min_freq").readText().trim()
@@ -76,9 +82,9 @@ class MainActivity : AppCompatActivity() {
                     val verify = File("$base/scaling_min_freq").readText().trim()
                     android.util.Log.d("CPULock", "cpu$cpu min_freq: $currentMin → $verify (max: $maxFreq)")
                 }
+            } catch (e: Exception) {
+                android.util.Log.e("CPULock", "cpu$cpu lock failed", e)
             }
-        } catch (e: Exception) {
-            android.util.Log.e("CPULock", "lockCpuFrequency failed", e)
         }
     }
 
