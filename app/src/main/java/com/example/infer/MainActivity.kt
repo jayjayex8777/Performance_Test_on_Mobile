@@ -83,11 +83,18 @@ class MainActivity : AppCompatActivity() {
         for (cpu in 0..7) {
             val freqPath = "/sys/devices/system/cpu/cpu$cpu/cpufreq/scaling_cur_freq"
             val mhz = try {
-                val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", "cat $freqPath"))
-                val khz = proc.inputStream.bufferedReader().readText().trim()
-                proc.waitFor()
+                // 직접 파일 읽기 시도 (root 불필요)
+                val khz = File(freqPath).readText().trim()
                 if (khz.isNotEmpty()) "${khz.toLong() / 1000}MHz" else "N/A"
-            } catch (_: Exception) { "N/A" }
+            } catch (_: Exception) {
+                try {
+                    // fallback: su 사용
+                    val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", "cat $freqPath"))
+                    val khz = proc.inputStream.bufferedReader().readText().trim()
+                    proc.waitFor()
+                    if (khz.isNotEmpty()) "${khz.toLong() / 1000}MHz" else "N/A"
+                } catch (_: Exception) { "N/A" }
+            }
             if (sb.isNotEmpty()) sb.append(", ")
             sb.append("cpu$cpu: $mhz")
         }
