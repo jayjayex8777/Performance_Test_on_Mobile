@@ -363,9 +363,9 @@ class MainActivity : AppCompatActivity() {
 
                             val executor = java.util.concurrent.Executors.newFixedThreadPool(numThreads)
 
-                            // CPU 클럭 로그 (측정 전)
-                            val beforeFreq = readCpuFrequencies()
-                            builder.append("  [Before] $beforeFreq\n")
+                            // CPU 클럭 로그 (측정 전) — 필요 시 주석 해제
+                            // val beforeFreq = readCpuFrequencies()
+                            // builder.append("  [Before] $beforeFreq\n")
 
                             // Warm-up
                             val warmupLatch = java.util.concurrent.CountDownLatch(numThreads)
@@ -477,9 +477,9 @@ class MainActivity : AppCompatActivity() {
                             batPw.println("$groupName,$modelFile,$sizeStr,mt_differential,${formatValue(energyShort)},${formatValue(energyLong)},${formatValue(diffEnergy)},${formatValue(energyPerInference)},${formatValue(avgCurrentShort)},${formatValue(avgCurrentLong)},${formatValue(shortElapsedS)},${formatValue(longElapsedS)},${shortSamples.size},${longSamples.size},$numThreads")
                             builder.append("[$groupName] $modelFile ($sizeStr KB): avg ${formatMs(avgMs)} ms, diff ${formatValue(diffEnergy)} uA·s, per_infer ${formatValue(energyPerInference)} uA·s\n")
 
-                            // CPU 클럭 로그 (측정 후)
-                            val afterFreq = readCpuFrequencies()
-                            builder.append("  [After]  $afterFreq\n")
+                            // CPU 클럭 로그 (측정 후) — 필요 시 주석 해제
+                            // val afterFreq = readCpuFrequencies()
+                            // builder.append("  [After]  $afterFreq\n")
 
                             Thread.sleep(3_000)
                         }
