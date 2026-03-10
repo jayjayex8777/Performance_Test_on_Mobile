@@ -67,16 +67,23 @@ class MainActivity : AppCompatActivity() {
                 if (currentMin.isNotEmpty()) {
                     originalMinFreqs[cpu] = currentMin
                 }
-                // performance governor 설정
-                suExec("echo performance > $base/scaling_governor")
+                // performance governor 설정 (tee 사용 — su -c 에서 > 리다이렉트가 동작하지 않는 문제 해결)
+                suExec("echo performance | tee $base/scaling_governor")
+                // 검증: governor가 실제로 변경되었는지 확인
+                val verifyGov = suExec("cat $base/scaling_governor")
+                android.util.Log.d("CPULock", "cpu$cpu governor set: $verifyGov")
+
                 // scaling_min_freq = scaling_max_freq (주파수 완전 고정)
                 val maxFreq = suExec("cat $base/scaling_max_freq")
                 if (maxFreq.isNotEmpty()) {
-                    suExec("echo $maxFreq > $base/scaling_min_freq")
+                    suExec("echo $maxFreq | tee $base/scaling_min_freq")
+                    // 검증: min_freq가 실제로 변경되었는지 확인
+                    val verifyMin = suExec("cat $base/scaling_min_freq")
+                    android.util.Log.d("CPULock", "cpu$cpu scaling_min_freq set: $verifyMin (target: $maxFreq)")
                 }
             }
-        } catch (_: Exception) {
-            // Root 권한 없거나 경로 미지원 시 무시
+        } catch (e: Exception) {
+            android.util.Log.e("CPULock", "lockCpuFrequency failed", e)
         }
     }
 
@@ -86,10 +93,10 @@ class MainActivity : AppCompatActivity() {
                 val base = "/sys/devices/system/cpu/cpu$cpu/cpufreq"
                 // 원래 scaling_min_freq 복원 (governor 복원 전에)
                 originalMinFreqs[cpu]?.let { minFreq ->
-                    suExec("echo $minFreq > $base/scaling_min_freq")
+                    suExec("echo $minFreq | tee $base/scaling_min_freq")
                 }
                 // 원래 governor 복원
-                suExec("echo $governor > $base/scaling_governor")
+                suExec("echo $governor | tee $base/scaling_governor")
             }
             originalGovernors.clear()
             originalMinFreqs.clear()
