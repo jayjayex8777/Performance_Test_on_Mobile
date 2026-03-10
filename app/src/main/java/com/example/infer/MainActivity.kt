@@ -1,10 +1,13 @@
 package com.example.infer
 
+import android.app.KeyguardManager
+import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.os.SystemClock
 import android.os.BatteryManager
 import android.os.Environment
+import android.view.WindowManager
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -49,12 +52,45 @@ class MainActivity : AppCompatActivity() {
 
     @Suppress("DEPRECATION")
     private fun wakeUpScreen() {
+        // 1) API 27+ 공식 방법: setTurnScreenOn
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setTurnScreenOn(true)
+            setShowWhenLocked(true)
+        }
+
+        // 2) Window flags (API 26 이하 호환 + 보조)
+        window.addFlags(
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        )
+
+        // 3) KeyguardManager로 잠금화면 해제 요청 (API 26+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val km = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
+            km.requestDismissKeyguard(this, null)
+        }
+
+        // 4) Deprecated wake lock (추가 fallback)
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         val screenLock = pm.newWakeLock(
             PowerManager.FULL_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP or PowerManager.ON_AFTER_RELEASE,
             "infer:screen_on"
         )
-        screenLock.acquire(3000) // 3초 후 자동 해제
+        screenLock.acquire(5000) // 5초 후 자동 해제
+    }
+
+    @Suppress("DEPRECATION")
+    private fun clearScreenFlags() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setTurnScreenOn(false)
+            setShowWhenLocked(false)
+        }
+        window.clearFlags(
+            WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        )
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -111,6 +147,7 @@ class MainActivity : AppCompatActivity() {
             binding.statusText.text = if (result.success) "완료" else "오류 발생"
             setButtonsEnabled(true)
             wakeUpScreen()
+            clearScreenFlags()
             releaseWakeLock()
         }
     }
@@ -464,6 +501,7 @@ class MainActivity : AppCompatActivity() {
             binding.statusText.text = if (result.success) "완료" else "오류 발생"
             setButtonsEnabled(true)
             wakeUpScreen()
+            clearScreenFlags()
             releaseWakeLock()
         }
     }
@@ -600,6 +638,7 @@ class MainActivity : AppCompatActivity() {
             binding.statusText.text = if (result.success) "완료" else "오류 발생"
             setButtonsEnabled(true)
             wakeUpScreen()
+            clearScreenFlags()
             releaseWakeLock()
         }
     }
@@ -617,6 +656,7 @@ class MainActivity : AppCompatActivity() {
             binding.statusText.text = if (result.success) "완료" else "오류 발생"
             setButtonsEnabled(true)
             wakeUpScreen()
+            clearScreenFlags()
             releaseWakeLock()
         }
     }
@@ -1102,6 +1142,7 @@ class MainActivity : AppCompatActivity() {
             binding.statusText.text = if (result.success) "완료" else "오류 발생"
             setButtonsEnabled(true)
             wakeUpScreen()
+            clearScreenFlags()
             releaseWakeLock()
         }
     }
