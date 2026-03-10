@@ -39,11 +39,26 @@ class MainActivity : AppCompatActivity() {
     private var originalGovernors = mutableMapOf<Int, String>()
     private var originalMinFreqs = mutableMapOf<Int, String>()
 
+    // su -c 로 읽기 전용 명령 실행 (cat, dumpsys 등)
     private fun suExec(cmd: String): String {
         val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", cmd))
         val result = proc.inputStream.bufferedReader().readText().trim()
         proc.waitFor()
         return result
+    }
+
+    // sysfs 파일에 값 쓰기: su를 대화형으로 열고 stdin에 직접 echo > 전달
+    // su -c "echo X > /path" 는 Magisk/KernelSU에서 >, | 등 쉘 연산자가 해석 안되는 문제 해결
+    private fun suWrite(path: String, value: String) {
+        val proc = Runtime.getRuntime().exec(arrayOf("su"))
+        proc.outputStream.bufferedWriter().use { writer ->
+            writer.write("echo '$value' > $path\n")
+            writer.flush()
+        }
+        proc.waitFor()
+        // 검증 로그
+        val verify = suExec("cat $path")
+        android.util.Log.d("CPULock", "suWrite $path = '$value' → verify: '$verify'")
     }
 
     private fun lockCpuFrequency() {
@@ -67,19 +82,12 @@ class MainActivity : AppCompatActivity() {
                 if (currentMin.isNotEmpty()) {
                     originalMinFreqs[cpu] = currentMin
                 }
-                // performance governor 설정 (tee 사용 — su -c 에서 > 리다이렉트가 동작하지 않는 문제 해결)
-                suExec("echo performance | tee $base/scaling_governor")
-                // 검증: governor가 실제로 변경되었는지 확인
-                val verifyGov = suExec("cat $base/scaling_governor")
-                android.util.Log.d("CPULock", "cpu$cpu governor set: $verifyGov")
-
+                // performance governor 설정
+                suWrite("$base/scaling_governor", "performance")
                 // scaling_min_freq = scaling_max_freq (주파수 완전 고정)
                 val maxFreq = suExec("cat $base/scaling_max_freq")
                 if (maxFreq.isNotEmpty()) {
-                    suExec("echo $maxFreq | tee $base/scaling_min_freq")
-                    // 검증: min_freq가 실제로 변경되었는지 확인
-                    val verifyMin = suExec("cat $base/scaling_min_freq")
-                    android.util.Log.d("CPULock", "cpu$cpu scaling_min_freq set: $verifyMin (target: $maxFreq)")
+                    suWrite("$base/scaling_min_freq", maxFreq)
                 }
             }
         } catch (e: Exception) {
@@ -93,10 +101,10 @@ class MainActivity : AppCompatActivity() {
                 val base = "/sys/devices/system/cpu/cpu$cpu/cpufreq"
                 // 원래 scaling_min_freq 복원 (governor 복원 전에)
                 originalMinFreqs[cpu]?.let { minFreq ->
-                    suExec("echo $minFreq | tee $base/scaling_min_freq")
+                    suWrite("$base/scaling_min_freq", minFreq)
                 }
                 // 원래 governor 복원
-                suExec("echo $governor | tee $base/scaling_governor")
+                suWrite("$base/scaling_governor", governor)
             }
             originalGovernors.clear()
             originalMinFreqs.clear()
@@ -507,6 +515,7 @@ class MainActivity : AppCompatActivity() {
                             // CPU 클럭 로그 (측정 후)
                             val afterFreq = readCpuFrequencies()
                             builder.append("  [After]  $afterFreq\n")
+                            builder.append("\n")
 
                             Thread.sleep(3_000)
                         }
