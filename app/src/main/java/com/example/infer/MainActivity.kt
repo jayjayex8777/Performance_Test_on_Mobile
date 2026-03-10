@@ -38,28 +38,9 @@ class MainActivity : AppCompatActivity() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var originalMinFreqs = mutableMapOf<Int, String>()
 
-    private fun suExec(cmd: String): String {
-        val proc = Runtime.getRuntime().exec(arrayOf("su", "-c", cmd))
-        val result = proc.inputStream.bufferedReader().readText().trim()
-        proc.waitFor()
-        return result
-    }
-
     // CPU 주파수 고정: 코어별 scaling_min_freq = scaling_max_freq
-    // 사전 조건: 측정 전 사용자가 adb shell su -c "setenforce 0" 수행
-    // FileWriter로 sysfs에 직접 쓰기 (su 프로세스 불필요, setenforce 0 상태에서 동작)
+    // 사전 조건: setenforce 0 + chmod -R 777 /sys/devices/system/cpu/cpu*/cpufreq/
     private fun lockCpuFrequency() {
-        // Doze 화이트리스트 + Samsung 배터리 최적화 해제 (실패해도 CPU 고정에는 영향 없음)
-        try {
-            val pkg = packageName
-            suExec("dumpsys deviceidle whitelist +$pkg")
-            suExec("cmd appops set $pkg RUN_IN_BACKGROUND allow")
-            suExec("cmd appops set $pkg RUN_ANY_IN_BACKGROUND allow")
-        } catch (e: Exception) {
-            android.util.Log.w("CPULock", "Doze/Samsung permission setup failed (non-fatal)", e)
-        }
-
-        // CPU 주파수 고정: FileWriter로 sysfs 직접 쓰기
         // 사전 조건: setenforce 0 + chmod -R 777 /sys/devices/system/cpu/cpu*/cpufreq/
         for (cpu in 0..7) {
             try {
@@ -335,7 +316,7 @@ class MainActivity : AppCompatActivity() {
         val csvFiles = allCsvFiles.take(allCsvFiles.size / 4)
 
         val numThreads = 8
-        val N = 50
+        val N = 1
 
         val batteryManager = getSystemService(BATTERY_SERVICE) as BatteryManager
         val currentSupported =
@@ -387,9 +368,9 @@ class MainActivity : AppCompatActivity() {
 
                             val executor = java.util.concurrent.Executors.newFixedThreadPool(numThreads)
 
-                            // CPU 클럭 로그 (측정 전)
-                            val beforeFreq = readCpuFrequencies()
-                            builder.append("  [Before] $beforeFreq\n")
+                            // CPU 클럭 로그 (측정 전) — 필요 시 주석 해제
+                            // val beforeFreq = readCpuFrequencies()
+                            // builder.append("  [Before] $beforeFreq\n")
 
                             // Warm-up
                             val warmupLatch = java.util.concurrent.CountDownLatch(numThreads)
@@ -501,10 +482,10 @@ class MainActivity : AppCompatActivity() {
                             batPw.println("$groupName,$modelFile,$sizeStr,mt_differential,${formatValue(energyShort)},${formatValue(energyLong)},${formatValue(diffEnergy)},${formatValue(energyPerInference)},${formatValue(avgCurrentShort)},${formatValue(avgCurrentLong)},${formatValue(shortElapsedS)},${formatValue(longElapsedS)},${shortSamples.size},${longSamples.size},$numThreads")
                             builder.append("[$groupName] $modelFile ($sizeStr KB): avg ${formatMs(avgMs)} ms, diff ${formatValue(diffEnergy)} uA·s, per_infer ${formatValue(energyPerInference)} uA·s\n")
 
-                            // CPU 클럭 로그 (측정 후)
-                            val afterFreq = readCpuFrequencies()
-                            builder.append("  [After]  $afterFreq\n")
-                            builder.append("\n")
+                            // CPU 클럭 로그 (측정 후) — 필요 시 주석 해제
+                            // val afterFreq = readCpuFrequencies()
+                            // builder.append("  [After]  $afterFreq\n")
+                            // builder.append("\n")
 
                             Thread.sleep(3_000)
                         }
