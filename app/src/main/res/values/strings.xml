@@ -9,5 +9,9 @@
     <string name="start_cv_improved">BM (QCNN vs CV-Qsparse)</string>
     <string name="start_cv_basic_accuracy">Accuracy (CNN vs CV-SNNs)</string>
     <string name="start_cv_improved_accuracy">Accuracy (QCNN vs CV-Qsparse)</string>
+    <string name="custom_qcnn">QCNN</string>
+    <string name="custom_snn">SNN</string>
+    <string name="custom_bm">Latency &amp; 전류 측정</string>
+    <string name="custom_accuracy">Accuracy 측정</string>
     <string name="waiting_status">대기 중</string>
 </resources>

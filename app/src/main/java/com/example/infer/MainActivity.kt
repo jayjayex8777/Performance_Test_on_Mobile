@@ -1,16 +1,21 @@
 package com.example.infer
 
 import android.app.KeyguardManager
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.PowerManager
 import android.os.BatteryManager
 import android.os.Environment
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import com.example.infer.databinding.ActivityMainBinding
@@ -37,6 +42,17 @@ class MainActivity : AppCompatActivity() {
     private val random = Random(System.currentTimeMillis())
     private var wakeLock: PowerManager.WakeLock? = null
     private var originalMinFreqs = mutableMapOf<Int, String>()
+    private var customQcnnPaths = listOf<String>()
+    private var customSnnPaths = listOf<String>()
+    private var customQcnnFolderName = ""
+    private var customSnnFolderName = ""
+
+    private val qcnnFolderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        uri?.let { handleFolderSelected(it, isQcnn = true) }
+    }
+    private val snnFolderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        uri?.let { handleFolderSelected(it, isQcnn = false) }
+    }
 
     // CPU 주파수 고정: 코어별 scaling_min_freq = scaling_max_freq
     // 사전 조건: setenforce 0 + chmod -R 777 /sys/devices/system/cpu/cpu*/cpufreq/
@@ -187,6 +203,18 @@ class MainActivity : AppCompatActivity() {
         }
         binding.cvImprovedAccuracyButton.setOnClickListener {
             startCvImprovedAccuracy()
+        }
+        binding.customQcnnButton.setOnClickListener {
+            qcnnFolderPicker.launch(null)
+        }
+        binding.customSnnButton.setOnClickListener {
+            snnFolderPicker.launch(null)
+        }
+        binding.customBmButton.setOnClickListener {
+            startCustomBmMeasure()
+        }
+        binding.customAccuracyButton.setOnClickListener {
+            startCustomAccuracy()
         }
     }
 
@@ -357,11 +385,13 @@ class MainActivity : AppCompatActivity() {
                             groupName.contains("T15") -> 15
                             else -> timeSteps
                         }
+                        val sortedModels = models.sortedBy { sizeOrder(it) }
 
-                        for (modelFile in models) {
+                        for (modelFile in sortedModels) {
+                            val modelDisplayName = displayName(modelFile)
                             // 파일명에서 개별 T값 추출 (cv_models 등 파일마다 T가 다른 경우 대응)
                             val modelT = Regex("_T(\\d+)").find(modelFile)?.groupValues?.get(1)?.toIntOrNull() ?: groupT
-                            val modulePath = assetFilePath(modelFile)
+                            val modulePath = if (modelFile.startsWith("/")) modelFile else assetFilePath(modelFile)
                             val modelSizeKb = File(modulePath).length() / 1024.0
 
                             // 텐서 프리로딩
@@ -492,9 +522,9 @@ class MainActivity : AppCompatActivity() {
                             val totalMs = totalForwardNs / 1_000_000.0
                             val avgMs = if (forwardCount > 0) totalMs / forwardCount else 0.0
                             val sizeStr = String.format("%.1f", modelSizeKb)
-                            latPw.println("$groupName,$modelFile,$sizeStr,${formatMs(totalMs)},${formatMs(avgMs)},$forwardCount,$numThreads")
-                            batPw.println("$groupName,$modelFile,$sizeStr,mt_differential,${formatValue(energyShort)},${formatValue(energyLong)},${formatValue(diffEnergy)},${formatValue(energyPerInference)},${formatValue(avgCurrentShort)},${formatValue(avgCurrentLong)},${formatValue(shortElapsedS)},${formatValue(longElapsedS)},${shortSamples.size},${longSamples.size},$numThreads")
-                            builder.append("[$groupName] $modelFile ($sizeStr KB): avg ${formatMs(avgMs)} ms, diff ${formatValue(diffEnergy)} uA·s, per_infer ${formatValue(energyPerInference)} uA·s\n")
+                            latPw.println("$groupName,$modelDisplayName,$sizeStr,${formatMs(totalMs)},${formatMs(avgMs)},$forwardCount,$numThreads")
+                            batPw.println("$groupName,$modelDisplayName,$sizeStr,mt_differential,${formatValue(energyShort)},${formatValue(energyLong)},${formatValue(diffEnergy)},${formatValue(energyPerInference)},${formatValue(avgCurrentShort)},${formatValue(avgCurrentLong)},${formatValue(shortElapsedS)},${formatValue(longElapsedS)},${shortSamples.size},${longSamples.size},$numThreads")
+                            builder.append("[$groupName] $modelDisplayName ($sizeStr KB): avg ${formatMs(avgMs)} ms, diff ${formatValue(diffEnergy)} uA·s, per_infer ${formatValue(energyPerInference)} uA·s\n")
 
                             // CPU 클럭 로그 (측정 후) — 필요 시 주석 해제
                             // val afterFreq = readCpuFrequencies()
@@ -859,20 +889,22 @@ class MainActivity : AppCompatActivity() {
                         groupName.contains("T15") -> 15
                         else -> timeSteps
                     }
+                    val sortedModels = models.sortedBy { sizeOrder(it) }
 
                     builder.append("── $groupName (T=$groupT) ──\n")
 
-                    for (modelFile in models) {
+                    for (modelFile in sortedModels) {
+                        val modelDisplayName = displayName(modelFile)
                         // 파일명에서 개별 T값 추출 (cv_models 등 파일마다 T가 다른 경우 대응)
                         val modelT = Regex("_T(\\d+)").find(modelFile)?.groupValues?.get(1)?.toIntOrNull() ?: groupT
-                        val modelPath = assetFilePath(modelFile)
+                        val modelPath = if (modelFile.startsWith("/")) modelFile else assetFilePath(modelFile)
                         val modelSizeKb = File(modelPath).length() / 1024.0
                         val sizeStr = String.format("%.1f", modelSizeKb)
 
                         val module = try {
                             LiteModuleLoader.load(modelPath)
                         } catch (t: Throwable) {
-                            builder.append("  $modelFile ($sizeStr KB): 로드 실패 (${t.localizedMessage})\n")
+                            builder.append("  $modelDisplayName ($sizeStr KB): 로드 실패 (${t.localizedMessage})\n")
                             continue
                         }
 
@@ -908,12 +940,12 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         pw.println(
-                            "$groupName,$modelFile,$sizeStr,$total,$correct," +
+                            "$groupName,$modelDisplayName,$sizeStr,$total,$correct," +
                                 "${formatValue(acc)}," +
                                 classAccs.joinToString(",") { formatValue(it) }
                         )
 
-                        builder.append("  $modelFile ($sizeStr KB): ${String.format("%.2f", acc)}% ($correct/$total)\n")
+                        builder.append("  $modelDisplayName ($sizeStr KB): ${String.format("%.2f", acc)}% ($correct/$total)\n")
                         for (i in classNames.indices) {
                             if (totalPerClass[i] == 0) continue
                             val classAcc = classAccs[i]
@@ -945,6 +977,129 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ===================== Custom Folder Selection =====================
+
+    private fun handleFolderSelected(uri: Uri, isQcnn: Boolean) {
+        contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val docTree = DocumentFile.fromTreeUri(this, uri) ?: return
+        val folderName = docTree.name ?: "unknown"
+        val ptlFiles = docTree.listFiles().filter { it.name?.endsWith(".ptl") == true }
+
+        if (ptlFiles.isEmpty()) {
+            Toast.makeText(this, "선택한 폴더에 .ptl 파일이 없습니다.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val cacheSubDir = File(cacheDir, if (isQcnn) "custom_qcnn" else "custom_snn")
+        cacheSubDir.deleteRecursively()
+        cacheSubDir.mkdirs()
+
+        val paths = ptlFiles.mapNotNull { docFile ->
+            val name = docFile.name ?: return@mapNotNull null
+            val outFile = File(cacheSubDir, name)
+            try {
+                contentResolver.openInputStream(docFile.uri)?.use { input ->
+                    FileOutputStream(outFile).use { output ->
+                        input.copyTo(output)
+                        output.flush()
+                    }
+                }
+                outFile.absolutePath
+            } catch (_: Exception) { null }
+        }.sorted()
+
+        if (isQcnn) {
+            customQcnnPaths = paths
+            customQcnnFolderName = folderName
+            binding.customQcnnButton.text = "QCNN ($folderName)"
+        } else {
+            customSnnPaths = paths
+            customSnnFolderName = folderName
+            binding.customSnnButton.text = "SNN ($folderName)"
+        }
+        Toast.makeText(this, "$folderName: ${paths.size}개 PTL 로드됨", Toast.LENGTH_SHORT).show()
+    }
+
+    // ===================== Custom BM Measurement =====================
+
+    private fun startCustomBmMeasure() {
+        if (customQcnnPaths.isEmpty() || customSnnPaths.isEmpty()) {
+            Toast.makeText(this, "먼저 QCNN과 SNN 폴더를 선택하세요.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        setButtonsEnabled(false)
+        binding.statusText.text = "Custom BM 측정 중..."
+        binding.resultText.text = ""
+        acquireWakeLock()
+
+        val savedBrightness = window.attributes.screenBrightness
+        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
+
+        coroutineScope.launch {
+            val startNs = System.nanoTime()
+            withContext(Dispatchers.IO) { lockCpuFrequency() }
+            for (i in 30 downTo 1) {
+                binding.statusText.text = "Custom BM 안정화 대기 ${i}초..."
+                delay(1000)
+            }
+            binding.statusText.text = "Custom BM 측정 중..."
+            val result = withContext(Dispatchers.IO) {
+                val allModels = listOf(
+                    "QCNN" to customQcnnPaths,
+                    "SNN" to customSnnPaths,
+                )
+                runDifferentialMeasurement(allModels, "custom_bm")
+            }
+            val elapsed = formatElapsed(System.nanoTime() - startNs)
+            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
+            binding.resultText.text = result.message
+            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
+            setButtonsEnabled(true)
+            wakeUpScreen()
+            clearScreenFlags()
+            unlockCpuFrequency()
+            releaseWakeLock()
+        }
+    }
+
+    // ===================== Custom Accuracy =====================
+
+    private fun startCustomAccuracy() {
+        if (customQcnnPaths.isEmpty() || customSnnPaths.isEmpty()) {
+            Toast.makeText(this, "먼저 QCNN과 SNN 폴더를 선택하세요.", Toast.LENGTH_SHORT).show()
+            return
+        }
+        setButtonsEnabled(false)
+        binding.statusText.text = "Custom Accuracy 측정 중..."
+        binding.resultText.text = ""
+        acquireWakeLock()
+
+        val savedBrightness = window.attributes.screenBrightness
+        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
+
+        coroutineScope.launch {
+            val startNs = System.nanoTime()
+            withContext(Dispatchers.IO) { lockCpuFrequency() }
+            binding.statusText.text = "Custom Accuracy 측정 중..."
+            val result = withContext(Dispatchers.IO) {
+                val allModels = listOf(
+                    "QCNN" to customQcnnPaths,
+                    "SNN" to customSnnPaths,
+                )
+                runAccuracyComparison(allModels, "custom_accuracy")
+            }
+            val elapsed = formatElapsed(System.nanoTime() - startNs)
+            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
+            binding.resultText.text = result.message
+            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
+            setButtonsEnabled(true)
+            wakeUpScreen()
+            clearScreenFlags()
+            unlockCpuFrequency()
+            releaseWakeLock()
+        }
+    }
+
     // ===================== Utilities =====================
 
     private fun setButtonsEnabled(enabled: Boolean) {
@@ -956,6 +1111,10 @@ class MainActivity : AppCompatActivity() {
         binding.cvImprovedButton.isEnabled = enabled
         binding.cvBasicAccuracyButton.isEnabled = enabled
         binding.cvImprovedAccuracyButton.isEnabled = enabled
+        binding.customQcnnButton.isEnabled = enabled
+        binding.customSnnButton.isEnabled = enabled
+        binding.customBmButton.isEnabled = enabled
+        binding.customAccuracyButton.isEnabled = enabled
     }
 
     private fun loadCsvAsTensor(path: String, T: Int = timeSteps): Tensor {
@@ -1041,6 +1200,20 @@ class MainActivity : AppCompatActivity() {
         }
         return outFile.absolutePath
     }
+
+    private fun sizeOrder(name: String): Int {
+        val lower = File(name).name.lowercase()
+        return when {
+            lower.contains("smallest") -> 0
+            lower.contains("small") && !lower.contains("smallest") -> 1
+            lower.contains("medium") -> 2
+            lower.contains("largest") -> 4
+            lower.contains("large") -> 3
+            else -> 5
+        }
+    }
+
+    private fun displayName(path: String): String = File(path).name
 
     private fun formatMs(value: Double): String = String.format("%.3f", value)
     private fun formatValue(value: Double): String = String.format("%.6f", value)
