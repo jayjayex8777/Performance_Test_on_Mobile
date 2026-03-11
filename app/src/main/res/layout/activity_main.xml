@@ -23,51 +23,62 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:gravity="center"
         android:layout_marginTop="8dp"
         app:layout_constraintTop_toBottomOf="@id/titleText"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <Button
-            android:id="@+id/basicButton"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/start_basic"
-            android:textSize="13sp" />
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/basicButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/start_basic"
+                android:textSize="11sp"
+                android:layout_marginEnd="4dp" />
+
+            <Button
+                android:id="@+id/improvedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/start_improved"
+                android:textSize="11sp"
+                android:layout_marginStart="4dp" />
+        </LinearLayout>
 
         <Space
             android:layout_width="match_parent"
             android:layout_height="8dp" />
 
-        <Button
-            android:id="@+id/improvedButton"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/start_improved"
-            android:textSize="13sp" />
+            android:orientation="horizontal">
 
-        <Space
-            android:layout_width="match_parent"
-            android:layout_height="8dp" />
+            <Button
+                android:id="@+id/basicAccuracyButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/start_basic_accuracy"
+                android:textSize="11sp"
+                android:layout_marginEnd="4dp" />
 
-        <Button
-            android:id="@+id/basicAccuracyButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/start_basic_accuracy"
-            android:textSize="13sp" />
-
-        <Space
-            android:layout_width="match_parent"
-            android:layout_height="8dp" />
-
-        <Button
-            android:id="@+id/improvedAccuracyButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/start_improved_accuracy"
-            android:textSize="13sp" />
+            <Button
+                android:id="@+id/improvedAccuracyButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/start_improved_accuracy"
+                android:textSize="11sp"
+                android:layout_marginStart="4dp" />
+        </LinearLayout>
     </LinearLayout>
 
     <TextView

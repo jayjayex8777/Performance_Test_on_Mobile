@@ -316,7 +316,7 @@ class MainActivity : AppCompatActivity() {
         val csvFiles = allCsvFiles.take(allCsvFiles.size / 4)
 
         val numThreads = 8
-        val N = 1
+        val N = 50
 
         val batteryManager = getSystemService(BATTERY_SERVICE) as BatteryManager
         val currentSupported =
