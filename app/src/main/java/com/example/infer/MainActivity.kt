@@ -214,18 +214,18 @@ class MainActivity : AppCompatActivity() {
                     "cnn_largest_sensor.ptl",
                 )
                 val snnT3 = listOf(
-                    "snn_smallest_T3.ptl",
-                    "snn_small_T3.ptl",
-                    "snn_medium_T3.ptl",
-                    "snn_large_T3.ptl",
-                    "snn_largest_T3.ptl",
+                    "Final_Models/kv_models/snn_smallest_T3.ptl",
+                    "Final_Models/kv_models/snn_small_T3.ptl",
+                    "Final_Models/kv_models/snn_medium_T3.ptl",
+                    "Final_Models/kv_models/snn_large_T3.ptl",
+                    "Final_Models/kv_models/snn_largest_T3.ptl",
                 )
                 val studentKdT3 = listOf(
-                    "student_kd_smallest_T3.ptl",
-                    "student_kd_small_T3.ptl",
-                    "student_kd_medium_T3.ptl",
-                    "student_kd_large_T3.ptl",
-                    "student_kd_largest_T3.ptl",
+                    "Final_Models/kv_models/student_kd_smallest_T3.ptl",
+                    "Final_Models/kv_models/student_kd_small_T3.ptl",
+                    "Final_Models/kv_models/student_kd_medium_T3.ptl",
+                    "Final_Models/kv_models/student_kd_large_T3.ptl",
+                    "Final_Models/kv_models/student_kd_largest_T3.ptl",
                 )
                 val allModels = listOf(
                     "CNN" to cnnModels,
@@ -275,11 +275,11 @@ class MainActivity : AppCompatActivity() {
                     "qcnn_largest_sensor.ptl",
                 )
                 val qsparseT3fr05 = listOf(
-                    "qsparse_smallest_T3_fr05.ptl",
-                    "qsparse_small_T3_fr05.ptl",
-                    "qsparse_medium_T3_fr05.ptl",
-                    "qsparse_large_T3_fr05.ptl",
-                    "qsparse_largest_T3_fr05.ptl",
+                    "Final_Models/kv_models/kv_qsparse_smallest_T15_fr30.ptl",
+                    "Final_Models/kv_models/kv_qsparse_small_T10_fr05.ptl",
+                    "Final_Models/kv_models/kv_qsparse_medium_T10_fr05.ptl",
+                    "Final_Models/kv_models/kv_qsparse_large_T10_fr05.ptl",
+                    "Final_Models/kv_models/kv_qsparse_largest_T5_fr10.ptl",
                 )
                 val allModels = listOf(
                     "QCNN" to qcnnModels,
@@ -523,18 +523,18 @@ class MainActivity : AppCompatActivity() {
                     "cnn_largest_sensor.ptl",
                 )
                 val snnT3 = listOf(
-                    "snn_smallest_T3.ptl",
-                    "snn_small_T3.ptl",
-                    "snn_medium_T3.ptl",
-                    "snn_large_T3.ptl",
-                    "snn_largest_T3.ptl",
+                    "Final_Models/kv_models/snn_smallest_T3.ptl",
+                    "Final_Models/kv_models/snn_small_T3.ptl",
+                    "Final_Models/kv_models/snn_medium_T3.ptl",
+                    "Final_Models/kv_models/snn_large_T3.ptl",
+                    "Final_Models/kv_models/snn_largest_T3.ptl",
                 )
                 val studentKdT3 = listOf(
-                    "student_kd_smallest_T3.ptl",
-                    "student_kd_small_T3.ptl",
-                    "student_kd_medium_T3.ptl",
-                    "student_kd_large_T3.ptl",
-                    "student_kd_largest_T3.ptl",
+                    "Final_Models/kv_models/student_kd_smallest_T3.ptl",
+                    "Final_Models/kv_models/student_kd_small_T3.ptl",
+                    "Final_Models/kv_models/student_kd_medium_T3.ptl",
+                    "Final_Models/kv_models/student_kd_large_T3.ptl",
+                    "Final_Models/kv_models/student_kd_largest_T3.ptl",
                 )
                 val allModels = listOf(
                     "CNN" to cnnModels,
@@ -576,11 +576,11 @@ class MainActivity : AppCompatActivity() {
                     "qcnn_largest_sensor.ptl",
                 )
                 val qsparseT3fr05 = listOf(
-                    "qsparse_smallest_T3_fr05.ptl",
-                    "qsparse_small_T3_fr05.ptl",
-                    "qsparse_medium_T3_fr05.ptl",
-                    "qsparse_large_T3_fr05.ptl",
-                    "qsparse_largest_T3_fr05.ptl",
+                    "Final_Models/kv_models/kv_qsparse_smallest_T15_fr30.ptl",
+                    "Final_Models/kv_models/kv_qsparse_small_T10_fr05.ptl",
+                    "Final_Models/kv_models/kv_qsparse_medium_T10_fr05.ptl",
+                    "Final_Models/kv_models/kv_qsparse_large_T10_fr05.ptl",
+                    "Final_Models/kv_models/kv_qsparse_largest_T5_fr10.ptl",
                 )
                 val allModels = listOf(
                     "QCNN" to qcnnModels,
