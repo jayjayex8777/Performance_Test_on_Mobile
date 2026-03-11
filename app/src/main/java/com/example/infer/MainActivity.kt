@@ -1032,6 +1032,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun assetFilePath(assetName: String): String {
         val outFile = File(filesDir, assetName)
+        outFile.parentFile?.mkdirs()
         assets.open(assetName).use { input ->
             FileOutputStream(outFile).use { output ->
                 input.copyTo(output)
