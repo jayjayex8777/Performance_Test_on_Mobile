@@ -176,6 +176,18 @@ class MainActivity : AppCompatActivity() {
         binding.improvedAccuracyButton.setOnClickListener {
             startImprovedAccuracy()
         }
+        binding.cvBasicButton.setOnClickListener {
+            startCvBasicMeasure()
+        }
+        binding.cvImprovedButton.setOnClickListener {
+            startCvImprovedMeasure()
+        }
+        binding.cvBasicAccuracyButton.setOnClickListener {
+            startCvBasicAccuracy()
+        }
+        binding.cvImprovedAccuracyButton.setOnClickListener {
+            startCvImprovedAccuracy()
+        }
     }
 
     override fun onDestroy() {
@@ -347,12 +359,14 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         for (modelFile in models) {
+                            // 파일명에서 개별 T값 추출 (cv_models 등 파일마다 T가 다른 경우 대응)
+                            val modelT = Regex("_T(\\d+)").find(modelFile)?.groupValues?.get(1)?.toIntOrNull() ?: groupT
                             val modulePath = assetFilePath(modelFile)
                             val modelSizeKb = File(modulePath).length() / 1024.0
 
                             // 텐서 프리로딩
                             val preloadedTensors = csvFiles.map { csv ->
-                                loadCsvAsTensor("data/$csv", groupT)
+                                loadCsvAsTensor("data/$csv", modelT)
                             }
 
                             // 8개 Module 인스턴스 로딩
@@ -600,6 +614,220 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // ===================== CV Basic Models (CNN vs CV-SNNs) =====================
+
+    private fun startCvBasicMeasure() {
+        setButtonsEnabled(false)
+        binding.statusText.text = "CV Basic Models 측정 중..."
+        binding.resultText.text = ""
+        acquireWakeLock()
+
+        val savedBrightness = window.attributes.screenBrightness
+        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
+
+        coroutineScope.launch {
+            val startNs = System.nanoTime()
+            withContext(Dispatchers.IO) { lockCpuFrequency() }
+            // 안정화 대기 30초
+            for (i in 30 downTo 1) {
+                binding.statusText.text = "CV Basic Models 안정화 대기 ${i}초..."
+                delay(1000)
+            }
+            binding.statusText.text = "CV Basic Models 측정 중..."
+            val result = withContext(Dispatchers.IO) {
+                val cnnModels = listOf(
+                    "cnn_smallest_sensor.ptl",
+                    "cnn_small_sensor.ptl",
+                    "cnn_medium_sensor.ptl",
+                    "cnn_large_sensor.ptl",
+                    "cnn_largest_sensor.ptl",
+                )
+                val cvSnn = listOf(
+                    "Final_Models/cv_models/cv_snn_smallest_T15.ptl",
+                    "Final_Models/cv_models/cv_snn_small_T20.ptl",
+                    "Final_Models/cv_models/cv_snn_medium_T15.ptl",
+                    "Final_Models/cv_models/cv_snn_large_T20.ptl",
+                    "Final_Models/cv_models/cv_snn_largest_T10.ptl",
+                )
+                val cvStudentKd = listOf(
+                    "Final_Models/cv_models/cv_student_kd_smallest_T15.ptl",
+                    "Final_Models/cv_models/cv_student_kd_small_T10.ptl",
+                    "Final_Models/cv_models/cv_student_kd_medium_T20.ptl",
+                    "Final_Models/cv_models/cv_student_kd_large_T20.ptl",
+                    "Final_Models/cv_models/cv_student_kd_largest_T15.ptl",
+                )
+                val allModels = listOf(
+                    "CNN" to cnnModels,
+                    "CV_SNN" to cvSnn,
+                    "CV_STUDENT_KD" to cvStudentKd,
+                )
+                runDifferentialMeasurement(allModels, "cv_basic")
+            }
+            val elapsed = formatElapsed(System.nanoTime() - startNs)
+            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
+            binding.resultText.text = result.message
+            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
+            setButtonsEnabled(true)
+            wakeUpScreen()
+            clearScreenFlags()
+            unlockCpuFrequency()
+            releaseWakeLock()
+        }
+    }
+
+    // ===================== CV Improved Models (QCNN vs CV-Qsparse) =====================
+
+    private fun startCvImprovedMeasure() {
+        setButtonsEnabled(false)
+        binding.statusText.text = "CV Improved Models 측정 중..."
+        binding.resultText.text = ""
+        acquireWakeLock()
+
+        val savedBrightness = window.attributes.screenBrightness
+        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
+
+        coroutineScope.launch {
+            val startNs = System.nanoTime()
+            withContext(Dispatchers.IO) { lockCpuFrequency() }
+            // 안정화 대기 30초
+            for (i in 30 downTo 1) {
+                binding.statusText.text = "CV Improved Models 안정화 대기 ${i}초..."
+                delay(1000)
+            }
+            binding.statusText.text = "CV Improved Models 측정 중..."
+            val result = withContext(Dispatchers.IO) {
+                val qcnnModels = listOf(
+                    "qcnn_smallest_sensor.ptl",
+                    "qcnn_small_sensor.ptl",
+                    "qcnn_medium_sensor.ptl",
+                    "qcnn_large_sensor.ptl",
+                    "qcnn_largest_sensor.ptl",
+                )
+                val cvQsparse = listOf(
+                    "Final_Models/cv_models/cv_qsparse_smallest_T5_fr05.ptl",
+                    "Final_Models/cv_models/cv_qsparse_small_T10_fr10.ptl",
+                    "Final_Models/cv_models/cv_qsparse_medium_T3_fr10.ptl",
+                    "Final_Models/cv_models/cv_qsparse_large_T10_fr05.ptl",
+                    "Final_Models/cv_models/cv_qsparse_largest_T5_fr05.ptl",
+                )
+                val allModels = listOf(
+                    "QCNN" to qcnnModels,
+                    "CV_QSPARSE" to cvQsparse,
+                )
+                runDifferentialMeasurement(allModels, "cv_improved")
+            }
+            val elapsed = formatElapsed(System.nanoTime() - startNs)
+            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
+            binding.resultText.text = result.message
+            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
+            setButtonsEnabled(true)
+            wakeUpScreen()
+            clearScreenFlags()
+            unlockCpuFrequency()
+            releaseWakeLock()
+        }
+    }
+
+    // ===================== CV Accuracy Comparison =====================
+
+    private fun startCvBasicAccuracy() {
+        setButtonsEnabled(false)
+        binding.statusText.text = "CV Basic Models Accuracy 측정 중..."
+        binding.resultText.text = ""
+        acquireWakeLock()
+
+        val savedBrightness = window.attributes.screenBrightness
+        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
+
+        coroutineScope.launch {
+            val startNs = System.nanoTime()
+            withContext(Dispatchers.IO) { lockCpuFrequency() }
+            val result = withContext(Dispatchers.IO) {
+                val cnnModels = listOf(
+                    "cnn_smallest_sensor.ptl",
+                    "cnn_small_sensor.ptl",
+                    "cnn_medium_sensor.ptl",
+                    "cnn_large_sensor.ptl",
+                    "cnn_largest_sensor.ptl",
+                )
+                val cvSnn = listOf(
+                    "Final_Models/cv_models/cv_snn_smallest_T15.ptl",
+                    "Final_Models/cv_models/cv_snn_small_T20.ptl",
+                    "Final_Models/cv_models/cv_snn_medium_T15.ptl",
+                    "Final_Models/cv_models/cv_snn_large_T20.ptl",
+                    "Final_Models/cv_models/cv_snn_largest_T10.ptl",
+                )
+                val cvStudentKd = listOf(
+                    "Final_Models/cv_models/cv_student_kd_smallest_T15.ptl",
+                    "Final_Models/cv_models/cv_student_kd_small_T10.ptl",
+                    "Final_Models/cv_models/cv_student_kd_medium_T20.ptl",
+                    "Final_Models/cv_models/cv_student_kd_large_T20.ptl",
+                    "Final_Models/cv_models/cv_student_kd_largest_T15.ptl",
+                )
+                val allModels = listOf(
+                    "CNN" to cnnModels,
+                    "CV_SNN" to cvSnn,
+                    "CV_STUDENT_KD" to cvStudentKd,
+                )
+                runAccuracyComparison(allModels, "cv_basic_accuracy")
+            }
+            val elapsed = formatElapsed(System.nanoTime() - startNs)
+            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
+            binding.resultText.text = result.message
+            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
+            setButtonsEnabled(true)
+            wakeUpScreen()
+            clearScreenFlags()
+            unlockCpuFrequency()
+            releaseWakeLock()
+        }
+    }
+
+    private fun startCvImprovedAccuracy() {
+        setButtonsEnabled(false)
+        binding.statusText.text = "CV Improved Models Accuracy 측정 중..."
+        binding.resultText.text = ""
+        acquireWakeLock()
+
+        val savedBrightness = window.attributes.screenBrightness
+        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
+
+        coroutineScope.launch {
+            val startNs = System.nanoTime()
+            withContext(Dispatchers.IO) { lockCpuFrequency() }
+            val result = withContext(Dispatchers.IO) {
+                val qcnnModels = listOf(
+                    "qcnn_smallest_sensor.ptl",
+                    "qcnn_small_sensor.ptl",
+                    "qcnn_medium_sensor.ptl",
+                    "qcnn_large_sensor.ptl",
+                    "qcnn_largest_sensor.ptl",
+                )
+                val cvQsparse = listOf(
+                    "Final_Models/cv_models/cv_qsparse_smallest_T5_fr05.ptl",
+                    "Final_Models/cv_models/cv_qsparse_small_T10_fr10.ptl",
+                    "Final_Models/cv_models/cv_qsparse_medium_T3_fr10.ptl",
+                    "Final_Models/cv_models/cv_qsparse_large_T10_fr05.ptl",
+                    "Final_Models/cv_models/cv_qsparse_largest_T5_fr05.ptl",
+                )
+                val allModels = listOf(
+                    "QCNN" to qcnnModels,
+                    "CV_QSPARSE" to cvQsparse,
+                )
+                runAccuracyComparison(allModels, "cv_improved_accuracy")
+            }
+            val elapsed = formatElapsed(System.nanoTime() - startNs)
+            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
+            binding.resultText.text = result.message
+            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
+            setButtonsEnabled(true)
+            wakeUpScreen()
+            clearScreenFlags()
+            unlockCpuFrequency()
+            releaseWakeLock()
+        }
+    }
+
     private fun runAccuracyComparison(
         allModels: List<Pair<String, List<String>>>,
         csvPrefix: String
@@ -635,6 +863,8 @@ class MainActivity : AppCompatActivity() {
                     builder.append("── $groupName (T=$groupT) ──\n")
 
                     for (modelFile in models) {
+                        // 파일명에서 개별 T값 추출 (cv_models 등 파일마다 T가 다른 경우 대응)
+                        val modelT = Regex("_T(\\d+)").find(modelFile)?.groupValues?.get(1)?.toIntOrNull() ?: groupT
                         val modelPath = assetFilePath(modelFile)
                         val modelSizeKb = File(modelPath).length() / 1024.0
                         val sizeStr = String.format("%.1f", modelSizeKb)
@@ -653,7 +883,7 @@ class MainActivity : AppCompatActivity() {
 
                         for (csv in csvFiles) {
                             val label = inferLabel(csv) ?: continue
-                            val tensor = loadCsvAsTensor("data/$csv", groupT)
+                            val tensor = loadCsvAsTensor("data/$csv", modelT)
                             val output = module.forward(IValue.from(tensor)).toTensor()
                             val scores = output.dataAsFloatArray
                             var maxIdx = 0
@@ -722,6 +952,10 @@ class MainActivity : AppCompatActivity() {
         binding.improvedButton.isEnabled = enabled
         binding.basicAccuracyButton.isEnabled = enabled
         binding.improvedAccuracyButton.isEnabled = enabled
+        binding.cvBasicButton.isEnabled = enabled
+        binding.cvImprovedButton.isEnabled = enabled
+        binding.cvBasicAccuracyButton.isEnabled = enabled
+        binding.cvImprovedAccuracyButton.isEnabled = enabled
     }
 
     private fun loadCsvAsTensor(path: String, T: Int = timeSteps): Tensor {

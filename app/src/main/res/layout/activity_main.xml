@@ -79,6 +79,62 @@
                 android:textSize="11sp"
                 android:layout_marginStart="4dp" />
         </LinearLayout>
+
+        <Space
+            android:layout_width="match_parent"
+            android:layout_height="12dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/cvBasicButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/start_cv_basic"
+                android:textSize="11sp"
+                android:layout_marginEnd="4dp" />
+
+            <Button
+                android:id="@+id/cvImprovedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/start_cv_improved"
+                android:textSize="11sp"
+                android:layout_marginStart="4dp" />
+        </LinearLayout>
+
+        <Space
+            android:layout_width="match_parent"
+            android:layout_height="8dp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/cvBasicAccuracyButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/start_cv_basic_accuracy"
+                android:textSize="11sp"
+                android:layout_marginEnd="4dp" />
+
+            <Button
+                android:id="@+id/cvImprovedAccuracyButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/start_cv_improved_accuracy"
+                android:textSize="11sp"
+                android:layout_marginStart="4dp" />
+        </LinearLayout>
     </LinearLayout>
 
     <TextView
