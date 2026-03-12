@@ -1,7 +1,9 @@
 package com.example.infer
 
+import android.app.AlertDialog
 import android.app.KeyguardManager
 import android.content.Intent
+import android.widget.EditText
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -180,30 +182,6 @@ class MainActivity : AppCompatActivity() {
             insets
         }
 
-        binding.basicButton.setOnClickListener {
-            startBasicMeasure()
-        }
-        binding.improvedButton.setOnClickListener {
-            startImprovedMeasure()
-        }
-        binding.basicAccuracyButton.setOnClickListener {
-            startBasicAccuracy()
-        }
-        binding.improvedAccuracyButton.setOnClickListener {
-            startImprovedAccuracy()
-        }
-        binding.cvBasicButton.setOnClickListener {
-            startCvBasicMeasure()
-        }
-        binding.cvImprovedButton.setOnClickListener {
-            startCvImprovedMeasure()
-        }
-        binding.cvBasicAccuracyButton.setOnClickListener {
-            startCvBasicAccuracy()
-        }
-        binding.cvImprovedAccuracyButton.setOnClickListener {
-            startCvImprovedAccuracy()
-        }
         binding.customQcnnButton.setOnClickListener {
             qcnnFolderPicker.launch(null)
         }
@@ -223,120 +201,6 @@ class MainActivity : AppCompatActivity() {
         unlockCpuFrequency()
         releaseWakeLock()
         coroutineScope.cancel()
-    }
-
-    // ===================== Basic Models (CNN vs SNNs) =====================
-
-    private fun startBasicMeasure() {
-        setButtonsEnabled(false)
-        binding.statusText.text = "Basic Models 측정 중..."
-        binding.resultText.text = ""
-        acquireWakeLock()
-
-        val savedBrightness = window.attributes.screenBrightness
-        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
-
-        coroutineScope.launch {
-            val startNs = System.nanoTime()
-            withContext(Dispatchers.IO) { lockCpuFrequency() }
-            // 안정화 대기 30초
-            for (i in 30 downTo 1) {
-                binding.statusText.text = "Basic Models 안정화 대기 ${i}초..."
-                delay(1000)
-            }
-            binding.statusText.text = "Basic Models 측정 중..."
-            val result = withContext(Dispatchers.IO) {
-                val cnnModels = listOf(
-                    "cnn_smallest_sensor.ptl",
-                    "cnn_small_sensor.ptl",
-                    "cnn_medium_sensor.ptl",
-                    "cnn_large_sensor.ptl",
-                    "cnn_largest_sensor.ptl",
-                )
-                val snnT3 = listOf(
-                    "Final_Models/kv_models/snn_smallest_T3.ptl",
-                    "Final_Models/kv_models/snn_small_T3.ptl",
-                    "Final_Models/kv_models/snn_medium_T3.ptl",
-                    "Final_Models/kv_models/snn_large_T3.ptl",
-                    "Final_Models/kv_models/snn_largest_T3.ptl",
-                )
-                val studentKdT3 = listOf(
-                    "Final_Models/kv_models/student_kd_smallest_T3.ptl",
-                    "Final_Models/kv_models/student_kd_small_T3.ptl",
-                    "Final_Models/kv_models/student_kd_medium_T3.ptl",
-                    "Final_Models/kv_models/student_kd_large_T3.ptl",
-                    "Final_Models/kv_models/student_kd_largest_T3.ptl",
-                )
-                val allModels = listOf(
-                    "CNN" to cnnModels,
-                    "SNN_T3" to snnT3,
-                    "STUDENT_KD_T3" to studentKdT3,
-                )
-                runDifferentialMeasurement(allModels, "basic")
-            }
-            val elapsed = formatElapsed(System.nanoTime() - startNs)
-            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
-            binding.resultText.text = result.message
-            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
-            setButtonsEnabled(true)
-            wakeUpScreen()
-            clearScreenFlags()
-            unlockCpuFrequency()
-            releaseWakeLock()
-        }
-    }
-
-    // ===================== Improved Models (QCNN vs QSparse) =====================
-
-    private fun startImprovedMeasure() {
-        setButtonsEnabled(false)
-        binding.statusText.text = "Improved Models 측정 중..."
-        binding.resultText.text = ""
-        acquireWakeLock()
-
-        val savedBrightness = window.attributes.screenBrightness
-        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
-
-        coroutineScope.launch {
-            val startNs = System.nanoTime()
-            withContext(Dispatchers.IO) { lockCpuFrequency() }
-            // 안정화 대기 30초
-            for (i in 30 downTo 1) {
-                binding.statusText.text = "Improved Models 안정화 대기 ${i}초..."
-                delay(1000)
-            }
-            binding.statusText.text = "Improved Models 측정 중..."
-            val result = withContext(Dispatchers.IO) {
-                val qcnnModels = listOf(
-                    "qcnn_smallest_sensor.ptl",
-                    "qcnn_small_sensor.ptl",
-                    "qcnn_medium_sensor.ptl",
-                    "qcnn_large_sensor.ptl",
-                    "qcnn_largest_sensor.ptl",
-                )
-                val qsparseT3fr05 = listOf(
-                    "Final_Models/kv_models/kv_qsparse_smallest_T15_fr30.ptl",
-                    "Final_Models/kv_models/kv_qsparse_small_T10_fr05.ptl",
-                    "Final_Models/kv_models/kv_qsparse_medium_T10_fr05.ptl",
-                    "Final_Models/kv_models/kv_qsparse_large_T10_fr05.ptl",
-                    "Final_Models/kv_models/kv_qsparse_largest_T5_fr10.ptl",
-                )
-                val allModels = listOf(
-                    "QCNN" to qcnnModels,
-                    "QSPARSE_T3_FR05" to qsparseT3fr05,
-                )
-                runDifferentialMeasurement(allModels, "improved")
-            }
-            val elapsed = formatElapsed(System.nanoTime() - startNs)
-            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
-            binding.resultText.text = result.message
-            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
-            setButtonsEnabled(true)
-            wakeUpScreen()
-            clearScreenFlags()
-            unlockCpuFrequency()
-            releaseWakeLock()
-        }
     }
 
     // ===================== Shared Differential Measurement =====================
@@ -533,330 +397,18 @@ class MainActivity : AppCompatActivity() {
 
                             Thread.sleep(3_000)
                         }
+                        builder.append("\n")
                     }
                 }
             }
 
-            builder.append("\n완료.\nLatency CSV: ${latencyFile.absolutePath}\nBattery CSV: ${batteryFile.absolutePath}")
+            builder.append("완료.\nLatency CSV: ${latencyFile.absolutePath}\nBattery CSV: ${batteryFile.absolutePath}")
             InferenceResult(builder.toString(), true)
         } catch (t: Throwable) {
             InferenceResult("측정 중 오류 발생: ${t.localizedMessage}", false)
         }
     }
 
-    // ===================== Accuracy Comparison =====================
-
-    private fun startBasicAccuracy() {
-        setButtonsEnabled(false)
-        binding.statusText.text = "Basic Models Accuracy 측정 중..."
-        binding.resultText.text = ""
-        acquireWakeLock()
-
-        val savedBrightness = window.attributes.screenBrightness
-        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
-
-        coroutineScope.launch {
-            val startNs = System.nanoTime()
-            withContext(Dispatchers.IO) { lockCpuFrequency() }
-            val result = withContext(Dispatchers.IO) {
-                val cnnModels = listOf(
-                    "cnn_smallest_sensor.ptl",
-                    "cnn_small_sensor.ptl",
-                    "cnn_medium_sensor.ptl",
-                    "cnn_large_sensor.ptl",
-                    "cnn_largest_sensor.ptl",
-                )
-                val snnT3 = listOf(
-                    "Final_Models/kv_models/snn_smallest_T3.ptl",
-                    "Final_Models/kv_models/snn_small_T3.ptl",
-                    "Final_Models/kv_models/snn_medium_T3.ptl",
-                    "Final_Models/kv_models/snn_large_T3.ptl",
-                    "Final_Models/kv_models/snn_largest_T3.ptl",
-                )
-                val studentKdT3 = listOf(
-                    "Final_Models/kv_models/student_kd_smallest_T3.ptl",
-                    "Final_Models/kv_models/student_kd_small_T3.ptl",
-                    "Final_Models/kv_models/student_kd_medium_T3.ptl",
-                    "Final_Models/kv_models/student_kd_large_T3.ptl",
-                    "Final_Models/kv_models/student_kd_largest_T3.ptl",
-                )
-                val allModels = listOf(
-                    "CNN" to cnnModels,
-                    "SNN_T3" to snnT3,
-                    "STUDENT_KD_T3" to studentKdT3,
-                )
-                runAccuracyComparison(allModels, "basic_accuracy")
-            }
-            val elapsed = formatElapsed(System.nanoTime() - startNs)
-            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
-            binding.resultText.text = result.message
-            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
-            setButtonsEnabled(true)
-            wakeUpScreen()
-            clearScreenFlags()
-            unlockCpuFrequency()
-            releaseWakeLock()
-        }
-    }
-
-    private fun startImprovedAccuracy() {
-        setButtonsEnabled(false)
-        binding.statusText.text = "Improved Models Accuracy 측정 중..."
-        binding.resultText.text = ""
-        acquireWakeLock()
-
-        val savedBrightness = window.attributes.screenBrightness
-        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
-
-        coroutineScope.launch {
-            val startNs = System.nanoTime()
-            withContext(Dispatchers.IO) { lockCpuFrequency() }
-            val result = withContext(Dispatchers.IO) {
-                val qcnnModels = listOf(
-                    "qcnn_smallest_sensor.ptl",
-                    "qcnn_small_sensor.ptl",
-                    "qcnn_medium_sensor.ptl",
-                    "qcnn_large_sensor.ptl",
-                    "qcnn_largest_sensor.ptl",
-                )
-                val qsparseT3fr05 = listOf(
-                    "Final_Models/kv_models/kv_qsparse_smallest_T15_fr30.ptl",
-                    "Final_Models/kv_models/kv_qsparse_small_T10_fr05.ptl",
-                    "Final_Models/kv_models/kv_qsparse_medium_T10_fr05.ptl",
-                    "Final_Models/kv_models/kv_qsparse_large_T10_fr05.ptl",
-                    "Final_Models/kv_models/kv_qsparse_largest_T5_fr10.ptl",
-                )
-                val allModels = listOf(
-                    "QCNN" to qcnnModels,
-                    "QSPARSE_T3_FR05" to qsparseT3fr05,
-                )
-                runAccuracyComparison(allModels, "improved_accuracy")
-            }
-            val elapsed = formatElapsed(System.nanoTime() - startNs)
-            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
-            binding.resultText.text = result.message
-            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
-            setButtonsEnabled(true)
-            wakeUpScreen()
-            clearScreenFlags()
-            unlockCpuFrequency()
-            releaseWakeLock()
-        }
-    }
-
-    // ===================== CV Basic Models (CNN vs CV-SNNs) =====================
-
-    private fun startCvBasicMeasure() {
-        setButtonsEnabled(false)
-        binding.statusText.text = "CV Basic Models 측정 중..."
-        binding.resultText.text = ""
-        acquireWakeLock()
-
-        val savedBrightness = window.attributes.screenBrightness
-        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
-
-        coroutineScope.launch {
-            val startNs = System.nanoTime()
-            withContext(Dispatchers.IO) { lockCpuFrequency() }
-            // 안정화 대기 30초
-            for (i in 30 downTo 1) {
-                binding.statusText.text = "CV Basic Models 안정화 대기 ${i}초..."
-                delay(1000)
-            }
-            binding.statusText.text = "CV Basic Models 측정 중..."
-            val result = withContext(Dispatchers.IO) {
-                val cnnModels = listOf(
-                    "cnn_smallest_sensor.ptl",
-                    "cnn_small_sensor.ptl",
-                    "cnn_medium_sensor.ptl",
-                    "cnn_large_sensor.ptl",
-                    "cnn_largest_sensor.ptl",
-                )
-                val cvSnn = listOf(
-                    "Final_Models/cv_models/cv_snn_smallest_T15.ptl",
-                    "Final_Models/cv_models/cv_snn_small_T20.ptl",
-                    "Final_Models/cv_models/cv_snn_medium_T15.ptl",
-                    "Final_Models/cv_models/cv_snn_large_T20.ptl",
-                    "Final_Models/cv_models/cv_snn_largest_T10.ptl",
-                )
-                val cvStudentKd = listOf(
-                    "Final_Models/cv_models/cv_student_kd_smallest_T15.ptl",
-                    "Final_Models/cv_models/cv_student_kd_small_T10.ptl",
-                    "Final_Models/cv_models/cv_student_kd_medium_T20.ptl",
-                    "Final_Models/cv_models/cv_student_kd_large_T20.ptl",
-                    "Final_Models/cv_models/cv_student_kd_largest_T15.ptl",
-                )
-                val allModels = listOf(
-                    "CNN" to cnnModels,
-                    "CV_SNN" to cvSnn,
-                    "CV_STUDENT_KD" to cvStudentKd,
-                )
-                runDifferentialMeasurement(allModels, "cv_basic")
-            }
-            val elapsed = formatElapsed(System.nanoTime() - startNs)
-            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
-            binding.resultText.text = result.message
-            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
-            setButtonsEnabled(true)
-            wakeUpScreen()
-            clearScreenFlags()
-            unlockCpuFrequency()
-            releaseWakeLock()
-        }
-    }
-
-    // ===================== CV Improved Models (QCNN vs CV-Qsparse) =====================
-
-    private fun startCvImprovedMeasure() {
-        setButtonsEnabled(false)
-        binding.statusText.text = "CV Improved Models 측정 중..."
-        binding.resultText.text = ""
-        acquireWakeLock()
-
-        val savedBrightness = window.attributes.screenBrightness
-        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
-
-        coroutineScope.launch {
-            val startNs = System.nanoTime()
-            withContext(Dispatchers.IO) { lockCpuFrequency() }
-            // 안정화 대기 30초
-            for (i in 30 downTo 1) {
-                binding.statusText.text = "CV Improved Models 안정화 대기 ${i}초..."
-                delay(1000)
-            }
-            binding.statusText.text = "CV Improved Models 측정 중..."
-            val result = withContext(Dispatchers.IO) {
-                val qcnnModels = listOf(
-                    "qcnn_smallest_sensor.ptl",
-                    "qcnn_small_sensor.ptl",
-                    "qcnn_medium_sensor.ptl",
-                    "qcnn_large_sensor.ptl",
-                    "qcnn_largest_sensor.ptl",
-                )
-                val cvQsparse = listOf(
-                    "Final_Models/cv_models/cv_qsparse_smallest_T5_fr05.ptl",
-                    "Final_Models/cv_models/cv_qsparse_small_T10_fr10.ptl",
-                    "Final_Models/cv_models/cv_qsparse_medium_T3_fr10.ptl",
-                    "Final_Models/cv_models/cv_qsparse_large_T10_fr05.ptl",
-                    "Final_Models/cv_models/cv_qsparse_largest_T5_fr05.ptl",
-                )
-                val allModels = listOf(
-                    "QCNN" to qcnnModels,
-                    "CV_QSPARSE" to cvQsparse,
-                )
-                runDifferentialMeasurement(allModels, "cv_improved")
-            }
-            val elapsed = formatElapsed(System.nanoTime() - startNs)
-            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
-            binding.resultText.text = result.message
-            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
-            setButtonsEnabled(true)
-            wakeUpScreen()
-            clearScreenFlags()
-            unlockCpuFrequency()
-            releaseWakeLock()
-        }
-    }
-
-    // ===================== CV Accuracy Comparison =====================
-
-    private fun startCvBasicAccuracy() {
-        setButtonsEnabled(false)
-        binding.statusText.text = "CV Basic Models Accuracy 측정 중..."
-        binding.resultText.text = ""
-        acquireWakeLock()
-
-        val savedBrightness = window.attributes.screenBrightness
-        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
-
-        coroutineScope.launch {
-            val startNs = System.nanoTime()
-            withContext(Dispatchers.IO) { lockCpuFrequency() }
-            val result = withContext(Dispatchers.IO) {
-                val cnnModels = listOf(
-                    "cnn_smallest_sensor.ptl",
-                    "cnn_small_sensor.ptl",
-                    "cnn_medium_sensor.ptl",
-                    "cnn_large_sensor.ptl",
-                    "cnn_largest_sensor.ptl",
-                )
-                val cvSnn = listOf(
-                    "Final_Models/cv_models/cv_snn_smallest_T15.ptl",
-                    "Final_Models/cv_models/cv_snn_small_T20.ptl",
-                    "Final_Models/cv_models/cv_snn_medium_T15.ptl",
-                    "Final_Models/cv_models/cv_snn_large_T20.ptl",
-                    "Final_Models/cv_models/cv_snn_largest_T10.ptl",
-                )
-                val cvStudentKd = listOf(
-                    "Final_Models/cv_models/cv_student_kd_smallest_T15.ptl",
-                    "Final_Models/cv_models/cv_student_kd_small_T10.ptl",
-                    "Final_Models/cv_models/cv_student_kd_medium_T20.ptl",
-                    "Final_Models/cv_models/cv_student_kd_large_T20.ptl",
-                    "Final_Models/cv_models/cv_student_kd_largest_T15.ptl",
-                )
-                val allModels = listOf(
-                    "CNN" to cnnModels,
-                    "CV_SNN" to cvSnn,
-                    "CV_STUDENT_KD" to cvStudentKd,
-                )
-                runAccuracyComparison(allModels, "cv_basic_accuracy")
-            }
-            val elapsed = formatElapsed(System.nanoTime() - startNs)
-            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
-            binding.resultText.text = result.message
-            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
-            setButtonsEnabled(true)
-            wakeUpScreen()
-            clearScreenFlags()
-            unlockCpuFrequency()
-            releaseWakeLock()
-        }
-    }
-
-    private fun startCvImprovedAccuracy() {
-        setButtonsEnabled(false)
-        binding.statusText.text = "CV Improved Models Accuracy 측정 중..."
-        binding.resultText.text = ""
-        acquireWakeLock()
-
-        val savedBrightness = window.attributes.screenBrightness
-        window.attributes = window.attributes.apply { screenBrightness = 0.01f }
-
-        coroutineScope.launch {
-            val startNs = System.nanoTime()
-            withContext(Dispatchers.IO) { lockCpuFrequency() }
-            val result = withContext(Dispatchers.IO) {
-                val qcnnModels = listOf(
-                    "qcnn_smallest_sensor.ptl",
-                    "qcnn_small_sensor.ptl",
-                    "qcnn_medium_sensor.ptl",
-                    "qcnn_large_sensor.ptl",
-                    "qcnn_largest_sensor.ptl",
-                )
-                val cvQsparse = listOf(
-                    "Final_Models/cv_models/cv_qsparse_smallest_T5_fr05.ptl",
-                    "Final_Models/cv_models/cv_qsparse_small_T10_fr10.ptl",
-                    "Final_Models/cv_models/cv_qsparse_medium_T3_fr10.ptl",
-                    "Final_Models/cv_models/cv_qsparse_large_T10_fr05.ptl",
-                    "Final_Models/cv_models/cv_qsparse_largest_T5_fr05.ptl",
-                )
-                val allModels = listOf(
-                    "QCNN" to qcnnModels,
-                    "CV_QSPARSE" to cvQsparse,
-                )
-                runAccuracyComparison(allModels, "cv_improved_accuracy")
-            }
-            val elapsed = formatElapsed(System.nanoTime() - startNs)
-            window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
-            binding.resultText.text = result.message
-            binding.statusText.text = if (result.success) "완료 (소요시간: $elapsed)" else "오류 발생 ($elapsed)"
-            setButtonsEnabled(true)
-            wakeUpScreen()
-            clearScreenFlags()
-            unlockCpuFrequency()
-            releaseWakeLock()
-        }
-    }
 
     private fun runAccuracyComparison(
         allModels: List<Pair<String, List<String>>>,
@@ -1027,6 +579,12 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "먼저 QCNN과 SNN 폴더를 선택하세요.", Toast.LENGTH_SHORT).show()
             return
         }
+        showFileNameDialog("custom_bm") { csvPrefix ->
+            launchBmMeasurement(csvPrefix)
+        }
+    }
+
+    private fun launchBmMeasurement(csvPrefix: String) {
         setButtonsEnabled(false)
         binding.statusText.text = "Custom BM 측정 중..."
         binding.resultText.text = ""
@@ -1048,7 +606,7 @@ class MainActivity : AppCompatActivity() {
                     "QCNN" to customQcnnPaths,
                     "SNN" to customSnnPaths,
                 )
-                runDifferentialMeasurement(allModels, "custom_bm")
+                runDifferentialMeasurement(allModels, csvPrefix)
             }
             val elapsed = formatElapsed(System.nanoTime() - startNs)
             window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
@@ -1069,6 +627,12 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "먼저 QCNN과 SNN 폴더를 선택하세요.", Toast.LENGTH_SHORT).show()
             return
         }
+        showFileNameDialog("custom_accuracy") { csvPrefix ->
+            launchAccuracyMeasurement(csvPrefix)
+        }
+    }
+
+    private fun launchAccuracyMeasurement(csvPrefix: String) {
         setButtonsEnabled(false)
         binding.statusText.text = "Custom Accuracy 측정 중..."
         binding.resultText.text = ""
@@ -1086,7 +650,7 @@ class MainActivity : AppCompatActivity() {
                     "QCNN" to customQcnnPaths,
                     "SNN" to customSnnPaths,
                 )
-                runAccuracyComparison(allModels, "custom_accuracy")
+                runAccuracyComparison(allModels, csvPrefix)
             }
             val elapsed = formatElapsed(System.nanoTime() - startNs)
             window.attributes = window.attributes.apply { screenBrightness = savedBrightness }
@@ -1100,17 +664,30 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showFileNameDialog(defaultPrefix: String, onResult: (String) -> Unit) {
+        val input = EditText(this).apply {
+            setText(defaultPrefix)
+            selectAll()
+            setPadding(48, 32, 48, 16)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("결과 파일명 입력")
+            .setMessage("파일명 prefix를 입력하세요.")
+            .setView(input)
+            .setPositiveButton("확인") { _, _ ->
+                val text = input.text.toString().trim()
+                onResult(if (text.isNotEmpty()) text else defaultPrefix)
+            }
+            .setNegativeButton("취소") { _, _ ->
+                onResult(defaultPrefix)
+            }
+            .setCancelable(false)
+            .show()
+    }
+
     // ===================== Utilities =====================
 
     private fun setButtonsEnabled(enabled: Boolean) {
-        binding.basicButton.isEnabled = enabled
-        binding.improvedButton.isEnabled = enabled
-        binding.basicAccuracyButton.isEnabled = enabled
-        binding.improvedAccuracyButton.isEnabled = enabled
-        binding.cvBasicButton.isEnabled = enabled
-        binding.cvImprovedButton.isEnabled = enabled
-        binding.cvBasicAccuracyButton.isEnabled = enabled
-        binding.cvImprovedAccuracyButton.isEnabled = enabled
         binding.customQcnnButton.isEnabled = enabled
         binding.customSnnButton.isEnabled = enabled
         binding.customBmButton.isEnabled = enabled
